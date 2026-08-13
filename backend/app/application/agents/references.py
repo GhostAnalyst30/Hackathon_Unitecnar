@@ -7,8 +7,8 @@ from ...infrastructure.crossref import verify_references
 from .base import bibliography_slice, call_agent_json, normalize_finding
 
 SYSTEM = """Revisor de bibliografía. SOLO JSON compacto, sin markdown:
-{"analisis":"1-2 frases","referencias":[{"referencia":"texto de la ref","relevancia":"alta|media|baja","comentario":"breve"}],"hallazgos":[{"cita":"copia literal ≤30 palabras","tipo":"referencia|alerta","severidad":"baja|media|alta","explicacion":"problema"}]}
-Máximo 12 referencias y 4 hallazgos. Si no hay bibliografía, un hallazgo tipo alerta. Español."""
+{"analisis":"1-2 frases","referencias":[{"referencia":"texto de la ref","relevancia":"alta|media|baja","comentario":"breve"}],"hallazgos":[{"cita":"copia literal 8-25 palabras","tipo":"referencia|alerta","severidad":"baja|media|alta","explicacion":"problema"}]}
+Hasta 12 referencias. Hasta 8 hallazgos: citas en el cuerpo, refs dudosas, no citadas o mal formateadas. Citas EXACTAS del documento. Español."""
 
 
 async def run_references(
@@ -20,7 +20,7 @@ async def run_references(
         SYSTEM,
         f"Documento (inicio + bibliografía):\n\n{bibliography_slice(text)}",
         settings.references_instructions,
-        max_tokens=1000,
+        max_tokens=1200,
     )
 
     findings = []

@@ -11,6 +11,9 @@ export function HighlightLegend() {
           <span className={`hl ${KIND_META[kind].className} px-1.5`}>{label}</span>
         </span>
       ))}
+      <span className="text-ink-faint">
+        Pasa el mouse por un resaltado para ver el comentario del agente.
+      </span>
     </div>
   );
 }

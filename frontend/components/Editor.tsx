@@ -4,6 +4,8 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
 import { EditorContent, useEditor, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -13,53 +15,107 @@ import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { KIND_META } from "@/lib/labels";
+import { HighlightPopover } from "@/components/HighlightPopover";
 import type { Finding } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Búsqueda de citas dentro del documento ProseMirror                   */
 /* ------------------------------------------------------------------ */
 
-interface Segment {
-  strStart: number;
-  docFrom: number;
-  length: number;
-}
-
-interface BlockIndex {
+interface FlatDoc {
   text: string;
-  segments: Segment[];
+  /** posición PM de cada carácter; -1 = separador sintético entre bloques */
+  pos: number[];
 }
 
-function indexBlock(node: PMNode, pos: number): BlockIndex {
-  const segments: Segment[] = [];
+function flattenDoc(doc: PMNode): FlatDoc {
   let text = "";
-  node.forEach((child, offset) => {
-    if (child.isText && child.text) {
-      segments.push({
-        strStart: text.length,
-        docFrom: pos + 1 + offset,
-        length: child.text.length,
-      });
-      text += child.text;
-    } else {
-      // Nodos inline no textuales (saltos de línea, etc.)
-      text += "\n";
+  const pos: number[] = [];
+  doc.descendants((node, nodePos) => {
+    if (node.isText && node.text) {
+      for (let i = 0; i < node.text.length; i++) {
+        text += node.text[i];
+        pos.push(nodePos + i);
+      }
+      return false;
     }
+    if (node.isBlock && text.length && !text.endsWith("\n")) {
+      text += "\n";
+      pos.push(-1);
+    }
+    return true;
   });
-  return { text, segments };
+  return { text, pos };
 }
 
-function strIndexToDocPos(block: BlockIndex, index: number): number | null {
-  for (const seg of block.segments) {
-    if (index >= seg.strStart && index <= seg.strStart + seg.length) {
-      return seg.docFrom + (index - seg.strStart);
+function rangeFromMatch(
+  flat: FlatDoc,
+  start: number,
+  end: number,
+): { from: number; to: number } | null {
+  let from = -1;
+  let to = -1;
+  for (let i = start; i < end && i < flat.pos.length; i++) {
+    const p = flat.pos[i];
+    if (p >= 0) {
+      if (from === -1) from = p;
+      to = p + 1;
     }
   }
-  return null;
+  if (from === -1 || to <= from) return null;
+  return { from, to };
 }
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function looseTokens(s: string): string[] {
+  return s.toLowerCase().match(/[a-záéíóúüñ0-9]+/gi) ?? [];
+}
+
+function tryMatch(
+  flat: FlatDoc,
+  quote: string,
+): { from: number; to: number } | null {
+  const trimmed = quote.trim().replace(/^[«»""''“”‘’]+|[«»""''“”‘’]+$/g, "");
+  if (!trimmed) return null;
+
+  const hay = flat.text;
+  for (const candidate of [quote.trim(), trimmed]) {
+    const exact = hay.indexOf(candidate);
+    if (exact !== -1) return rangeFromMatch(flat, exact, exact + candidate.length);
+    const lower = hay.toLowerCase().indexOf(candidate.toLowerCase());
+    if (lower !== -1) return rangeFromMatch(flat, lower, lower + candidate.length);
+  }
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const attempts: string[] = [];
+  if (tokens.length) {
+    attempts.push(tokens.map(escapeRegex).join("[\\s\\u00A0]+"));
+  }
+  const loose = looseTokens(trimmed);
+  if (loose.length >= 3) {
+    attempts.push(loose.map(escapeRegex).join("[\\W_]*"));
+  }
+  for (const n of [10, 7, 5]) {
+    if (tokens.length > n) {
+      attempts.push(tokens.slice(0, n).map(escapeRegex).join("[\\s\\u00A0]+"));
+    }
+    if (loose.length > n) {
+      attempts.push(loose.slice(0, n).map(escapeRegex).join("[\\W_]*"));
+    }
+  }
+
+  for (const source of attempts) {
+    try {
+      const match = new RegExp(source, "i").exec(hay);
+      if (match) return rangeFromMatch(flat, match.index, match.index + match[0].length);
+    } catch {
+      /* patrón inválido */
+    }
+  }
+  return null;
 }
 
 /** Busca una cita textual en el documento. Exacta primero, luego tolerante. */
@@ -67,51 +123,27 @@ export function findQuoteRange(
   doc: PMNode,
   quote: string,
 ): { from: number; to: number } | null {
-  const trimmed = quote.trim();
-  if (!trimmed) return null;
-
-  const tokens = trimmed.split(/\s+/);
-  const pattern = new RegExp(
-    tokens.map(escapeRegex).join("[\\s\\u00A0]+"),
-    "i",
-  );
-
-  let result: { from: number; to: number } | null = null;
-  doc.descendants((node, pos) => {
-    if (result || !node.isTextblock) return result === null;
-    const block = indexBlock(node, pos);
-    if (!block.text) return false;
-
-    let start = block.text.indexOf(trimmed);
-    let end = start === -1 ? -1 : start + trimmed.length;
-    if (start === -1) {
-      const match = pattern.exec(block.text);
-      if (match) {
-        start = match.index;
-        end = match.index + match[0].length;
-      }
-    }
-    if (start !== -1) {
-      const from = strIndexToDocPos(block, start);
-      const to = strIndexToDocPos(block, end);
-      if (from !== null && to !== null && to > from) {
-        result = { from, to };
-      }
-    }
-    return false;
-  });
-  return result;
+  if (!quote.trim()) return null;
+  return tryMatch(flattenDoc(doc), quote);
 }
 
-/* ------------------------------------------------------------------ */
-/* Plugin de decoraciones para resaltar hallazgos                      */
-/* ------------------------------------------------------------------ */
-
-const highlightKey = new PluginKey<{
-  findings: Finding[];
-  activeId: string | null;
-  decorations: DecorationSet;
-}>("finding-highlights");
+function findingRangesFromFlat(
+  flat: FlatDoc,
+  finding: Finding,
+): { from: number; to: number }[] {
+  const ranges: { from: number; to: number }[] = [];
+  const seen = new Set<string>();
+  for (const quote of [finding.quote, finding.quote_secondary]) {
+    if (!quote) continue;
+    const range = tryMatch(flat, quote);
+    if (!range) continue;
+    const key = `${range.from}:${range.to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ranges.push(range);
+  }
+  return ranges;
+}
 
 function buildDecorations(
   doc: PMNode,
@@ -119,9 +151,8 @@ function buildDecorations(
   activeId: string | null,
 ): DecorationSet {
   const decorations: Decoration[] = [];
+  const flat = flattenDoc(doc);
   for (const finding of findings) {
-    const range = findQuoteRange(doc, finding.quote);
-    if (!range) continue;
     const meta = KIND_META[finding.kind];
     const classes = [
       "hl",
@@ -130,16 +161,23 @@ function buildDecorations(
     ]
       .filter(Boolean)
       .join(" ");
-    decorations.push(
-      Decoration.inline(range.from, range.to, {
-        class: classes,
-        "data-finding-id": finding.id,
-        title: `${meta?.label ?? finding.kind} · ${finding.explanation}`,
-      }),
-    );
+    for (const range of findingRangesFromFlat(flat, finding)) {
+      decorations.push(
+        Decoration.inline(range.from, range.to, {
+          class: classes,
+          "data-finding-id": finding.id,
+        }),
+      );
+    }
   }
   return DecorationSet.create(doc, decorations);
 }
+
+const highlightKey = new PluginKey<{
+  findings: Finding[];
+  activeId: string | null;
+  decorations: DecorationSet;
+}>("finding-highlights");
 
 const FindingHighlights = Extension.create({
   name: "findingHighlights",
@@ -200,6 +238,13 @@ export const DocumentEditor = forwardRef<
     onChange: (html: string) => void;
   }
 >(function DocumentEditor({ initialContent, findings, onChange }, ref) {
+  const findingsRef = useRef(findings);
+  findingsRef.current = findings;
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tip, setTip] = useState<{ finding: Finding; rect: DOMRect } | null>(null);
+  const tipRef = useRef(tip);
+  tipRef.current = tip;
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -213,12 +258,36 @@ export const DocumentEditor = forwardRef<
     },
   });
 
-  // Sincronizar hallazgos con el plugin de resaltado
   useEffect(() => {
     if (!editor) return;
     const tr = editor.state.tr.setMeta(highlightKey, { findings });
     editor.view.dispatch(tr);
   }, [editor, findings]);
+
+  function clearHide() {
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }
+
+  function scheduleHide() {
+    clearHide();
+    hideTimer.current = setTimeout(() => setTip(null), 140);
+  }
+
+  function showFromEvent(target: EventTarget | null) {
+    const el = (target as HTMLElement | null)?.closest?.("[data-finding-id]") as
+      | HTMLElement
+      | null;
+    if (!el) return false;
+    const id = el.getAttribute("data-finding-id");
+    const finding = findingsRef.current.find((f) => f.id === id);
+    if (!finding) return false;
+    clearHide();
+    setTip({ finding, rect: el.getBoundingClientRect() });
+    return true;
+  }
 
   useImperativeHandle(
     ref,
@@ -227,16 +296,16 @@ export const DocumentEditor = forwardRef<
         if (!editor) return false;
         const range = findQuoteRange(editor.state.doc, original);
         if (!range) return false;
-        editor
-          .chain()
-          .focus()
-          .insertContentAt(range, suggested)
-          .run();
+        editor.chain().focus().insertContentAt(range, suggested).run();
         return true;
       },
       scrollToFinding(finding: Finding) {
         if (!editor) return false;
-        const range = findQuoteRange(editor.state.doc, finding.quote);
+        const range =
+          findQuoteRange(editor.state.doc, finding.quote) ??
+          (finding.quote_secondary
+            ? findQuoteRange(editor.state.doc, finding.quote_secondary)
+            : null);
         if (!range) return false;
         const tr = editor.state.tr
           .setMeta(highlightKey, { activeId: finding.id })
@@ -256,12 +325,43 @@ export const DocumentEditor = forwardRef<
   );
 
   return (
-    <div className="manuscript">
+    <div
+      className="manuscript"
+      onMouseOver={(e) => {
+        const el = (e.target as HTMLElement | null)?.closest?.(
+          "[data-finding-id]",
+        ) as HTMLElement | null;
+        if (!el) return;
+        const id = el.getAttribute("data-finding-id");
+        if (tipRef.current?.finding.id === id) {
+          clearHide();
+          return;
+        }
+        showFromEvent(e.target);
+      }}
+      onMouseOut={(e) => {
+        const next = e.relatedTarget as HTMLElement | null;
+        if (next?.closest?.("[data-finding-id]") || next?.closest?.(".hl-pop")) return;
+        scheduleHide();
+      }}
+    >
       <EditorContent editor={editor} />
+      {tip && (
+        <HighlightPopover
+          finding={tip.finding}
+          anchor={tip.rect}
+          onEnter={clearHide}
+          onLeave={scheduleHide}
+        />
+      )}
     </div>
   );
 });
 
 export function editorFindingAnchored(editor: TiptapEditor, finding: Finding) {
-  return findQuoteRange(editor.state.doc, finding.quote) !== null;
+  return (
+    findQuoteRange(editor.state.doc, finding.quote) !== null ||
+    (!!finding.quote_secondary &&
+      findQuoteRange(editor.state.doc, finding.quote_secondary) !== null)
+  );
 }

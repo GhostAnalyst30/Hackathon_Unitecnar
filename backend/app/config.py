@@ -11,8 +11,9 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 # Límite de documentos analizándose en paralelo
 MAX_CONCURRENT_ANALYSES = 4
 
-# Documento enviado a los agentes: cabeza (intro) + cola (conclusiones/refs)
+# Documento enviado a los agentes: cabeza + fragmento central + cola
 MAX_DOC_HEAD_CHARS = 7000
+MAX_DOC_MID_CHARS = 4000
 MAX_DOC_TAIL_CHARS = 5000
 
 LLM_TIMEOUT = 90

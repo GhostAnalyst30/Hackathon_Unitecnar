@@ -15,6 +15,8 @@ VALID_CLASSIFICATIONS = {"aprobable", "revisar", "alto_riesgo"}
 SEVERITY_PENALTY = {"baja": 2, "media": 6, "alta": 12}
 PENALIZING_KINDS = {"alerta", "contradiccion", "inconsistencia", "referencia"}
 
+_TOKEN_RE = re.compile(r"[a-záéíóúüñ0-9]+", re.IGNORECASE)
+
 
 def compute_score(findings: list[dict]) -> int:
     """Puntaje de validación 0-100 ponderado por severidad de las alertas."""
@@ -30,26 +32,44 @@ def find_quote(text: str, quote: str) -> tuple[int, int] | None:
     if not quote or not quote.strip():
         return None
 
-    # 1. Búsqueda exacta
-    idx = text.find(quote)
-    if idx != -1:
-        return idx, idx + len(quote)
+    stripped = quote.strip().strip("«»\"“”‘’'")
+    for candidate in (quote, stripped):
+        idx = text.find(candidate)
+        if idx != -1:
+            return idx, idx + len(candidate)
+        idx = text.lower().find(candidate.lower())
+        if idx != -1:
+            return idx, idx + len(candidate)
 
-    # 2. Búsqueda insensible a espacios en blanco y mayúsculas
-    tokens = quote.split()
+    tokens = stripped.split()
     if not tokens:
         return None
-    pattern = r"\s+".join(re.escape(tok) for tok in tokens)
-    match = re.search(pattern, text, re.IGNORECASE)
-    if match:
-        return match.start(), match.end()
 
-    # 3. Si la cita es larga, intenta con un prefijo (primeras ~12 palabras)
-    if len(tokens) > 12:
-        prefix_pattern = r"\s+".join(re.escape(tok) for tok in tokens[:12])
-        match = re.search(prefix_pattern, text, re.IGNORECASE)
+    def _search(pattern: str) -> tuple[int, int] | None:
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.start(), match.end()
+        return None
+
+    found = _search(r"\s+".join(re.escape(tok) for tok in tokens))
+    if found:
+        return found
+
+    loose = _TOKEN_RE.findall(stripped)
+    if len(loose) >= 3:
+        found = _search(r"[\W_]*".join(re.escape(t) for t in loose))
+        if found:
+            return found
+
+    for n in (10, 7, 5):
+        if len(tokens) > n:
+            found = _search(r"\s+".join(re.escape(tok) for tok in tokens[:n]))
+            if found:
+                return found
+        if len(loose) > n:
+            found = _search(r"[\W_]*".join(re.escape(t) for t in loose[:n]))
+            if found:
+                return found
 
     return None
 
@@ -58,6 +78,8 @@ def anchor_findings(text: str, findings: list[Finding]) -> None:
     """Actualiza in-place los offsets y el flag `anchored` de cada hallazgo."""
     for finding in findings:
         result = find_quote(text, finding.quote)
+        if not result and finding.quote_secondary:
+            result = find_quote(text, finding.quote_secondary)
         if result:
             finding.start_offset, finding.end_offset = result
             finding.anchored = True

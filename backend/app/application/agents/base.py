@@ -1,19 +1,21 @@
-from ...config import MAX_DOC_HEAD_CHARS, MAX_DOC_TAIL_CHARS
+from ...config import MAX_DOC_HEAD_CHARS, MAX_DOC_MID_CHARS, MAX_DOC_TAIL_CHARS
 from ...domain.entities import AppSettings
 from ...domain.services import VALID_KINDS, VALID_SEVERITIES
 from ...infrastructure.llm import chat_completion, extract_json
 
 
 def truncate_doc(text: str) -> str:
-    """Envía inicio + final del paper (abstract/métodos y conclusiones/refs)."""
-    budget = MAX_DOC_HEAD_CHARS + MAX_DOC_TAIL_CHARS
+    """Envía inicio, un fragmento central y el final (para citar más secciones)."""
+    budget = MAX_DOC_HEAD_CHARS + MAX_DOC_MID_CHARS + MAX_DOC_TAIL_CHARS
     if len(text) <= budget:
         return text
     head = text[:MAX_DOC_HEAD_CHARS]
     tail = text[-MAX_DOC_TAIL_CHARS:]
-    omitted = len(text) - budget
+    mid_start = max(MAX_DOC_HEAD_CHARS, (len(text) - MAX_DOC_MID_CHARS) // 2)
+    mid = text[mid_start : mid_start + MAX_DOC_MID_CHARS]
     return (
-        f"{head}\n\n[... {omitted} caracteres centrales omitidos para ir más rápido ...]\n\n{tail}"
+        f"{head}\n\n[... fragmento central ...]\n\n{mid}\n\n"
+        f"[... salto a conclusiones / referencias ...]\n\n{tail}"
     )
 
 

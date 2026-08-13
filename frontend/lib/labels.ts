@@ -65,6 +65,7 @@ export const HIGHLIGHT_LEGEND: { kind: FindingKind; label: string }[] = [
   { kind: "importante", label: "Importante" },
   { kind: "alerta", label: "Alerta" },
   { kind: "contradiccion", label: "Contradicción" },
+  { kind: "inconsistencia", label: "Inconsistencia" },
   { kind: "referencia", label: "Referencia" },
 ];
 
