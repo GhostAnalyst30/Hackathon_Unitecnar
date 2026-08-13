@@ -17,16 +17,16 @@
   --danger: #b3261e;
 
   /* Colores de resaltado por tipo de hallazgo */
-  --hl-importante: #cfe3f7;
-  --hl-importante-border: #6b9fd0;
-  --hl-alerta: #fbe6a8;
-  --hl-alerta-border: #cb9b28;
-  --hl-contradiccion: #f6c8c2;
-  --hl-contradiccion-border: #c9564a;
-  --hl-inconsistencia: #f7d8b8;
-  --hl-inconsistencia-border: #cf8636;
-  --hl-referencia: #ddd3f2;
-  --hl-referencia-border: #8b6fc4;
+  --hl-importante: #93c5fd;
+  --hl-importante-border: #2563eb;
+  --hl-alerta: #fcd34d;
+  --hl-alerta-border: #d97706;
+  --hl-contradiccion: #fca5a5;
+  --hl-contradiccion-border: #dc2626;
+  --hl-inconsistencia: #fdba74;
+  --hl-inconsistencia-border: #ea580c;
+  --hl-referencia: #c4b5fd;
+  --hl-referencia-border: #7c3aed;
 }
 
 @theme inline {
@@ -80,7 +80,7 @@ body::before {
 /* ---------- Resaltados de hallazgos en el editor ---------- */
 .hl {
   border-radius: 2px;
-  padding: 0.05em 0;
+  padding: 0.05em 0.12em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   cursor: help;
@@ -91,23 +91,23 @@ body::before {
 }
 .hl-importante {
   background: var(--hl-importante);
-  border-bottom: 2px solid var(--hl-importante-border);
+  box-shadow: inset 0 -2px 0 var(--hl-importante-border);
 }
 .hl-alerta {
   background: var(--hl-alerta);
-  border-bottom: 2px solid var(--hl-alerta-border);
+  box-shadow: inset 0 -2px 0 var(--hl-alerta-border);
 }
 .hl-contradiccion {
   background: var(--hl-contradiccion);
-  border-bottom: 2px solid var(--hl-contradiccion-border);
+  box-shadow: inset 0 -2px 0 var(--hl-contradiccion-border);
 }
 .hl-inconsistencia {
   background: var(--hl-inconsistencia);
-  border-bottom: 2px solid var(--hl-inconsistencia-border);
+  box-shadow: inset 0 -2px 0 var(--hl-inconsistencia-border);
 }
 .hl-referencia {
   background: var(--hl-referencia);
-  border-bottom: 2px solid var(--hl-referencia-border);
+  box-shadow: inset 0 -2px 0 var(--hl-referencia-border);
 }
 .hl-active {
   outline: 2px solid var(--accent);
@@ -144,12 +144,48 @@ body::before {
 }
 .manuscript .tiptap h1 {
   font-size: 1.7rem;
+  text-align: center;
+  margin-bottom: 0.4em;
 }
 .manuscript .tiptap h2 {
-  font-size: 1.35rem;
+  font-size: 1.28rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.15em;
 }
 .manuscript .tiptap h3 {
-  font-size: 1.15rem;
+  font-size: 1.12rem;
+  font-style: italic;
+}
+.manuscript .tiptap p em:only-child {
+  display: block;
+  text-align: center;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-style: normal;
+}
+.manuscript .tiptap hr {
+  border: none;
+  border-top: 1px dashed var(--line-strong);
+  margin: 2em 0 0.6em;
+}
+.manuscript .tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.88rem;
+  margin: 1em 0;
+}
+.manuscript .tiptap td,
+.manuscript .tiptap th {
+  border: 1px solid var(--line-strong);
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+}
+.manuscript .tiptap th {
+  background: var(--paper-sunken);
+  font-family: var(--font-plex), sans-serif;
+  font-weight: 600;
 }
 .manuscript .tiptap ul,
 .manuscript .tiptap ol {
@@ -166,15 +202,6 @@ body::before {
   padding-left: 1em;
   color: var(--ink-soft);
   font-style: italic;
-}
-.manuscript .tiptap table {
-  border-collapse: collapse;
-  width: 100%;
-}
-.manuscript .tiptap td,
-.manuscript .tiptap th {
-  border: 1px solid var(--line);
-  padding: 0.3em 0.6em;
 }
 .manuscript .tiptap a {
   color: var(--accent);

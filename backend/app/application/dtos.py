@@ -43,6 +43,15 @@ class ChatMessageDTO(BaseModel):
     created_at: datetime
 
 
+class ProcessLogDTO(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    agent: str
+    message: str
+    created_at: datetime
+
+
 class DocumentSummaryDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -64,6 +73,7 @@ class DocumentDetailDTO(DocumentSummaryDTO):
     findings: list[FindingDTO] = []
     agent_outputs: list[AgentOutputDTO] = []
     chat_messages: list[ChatMessageDTO] = []
+    process_logs: list[ProcessLogDTO] = []
 
 
 class ContentUpdateDTO(BaseModel):

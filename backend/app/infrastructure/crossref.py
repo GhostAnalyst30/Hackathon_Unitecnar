@@ -16,9 +16,9 @@ from ..config import CROSSREF_MAILTO
 logger = logging.getLogger("crossref")
 
 CROSSREF_URL = "https://api.crossref.org/works"
-MAX_CONCURRENT_LOOKUPS = 3
-LOOKUP_TIMEOUT = 15
-SEARCH_ROWS = 3
+MAX_CONCURRENT_LOOKUPS = 8
+LOOKUP_TIMEOUT = 10
+SEARCH_ROWS = 1
 # Solapamiento mínimo de tokens del título de Crossref presentes en la referencia
 MIN_TITLE_OVERLAP = 0.7
 # Un título con menos tokens significativos que esto no es evidencia suficiente

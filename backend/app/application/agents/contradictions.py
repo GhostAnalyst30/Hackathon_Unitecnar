@@ -5,34 +5,15 @@ import json
 from ...domain.entities import AppSettings
 from .base import call_agent_json, normalize_finding, truncate_doc
 
-SYSTEM = """Eres un agente detector de contradicciones e inconsistencias en papers académicos.
-Tu tarea: comparar afirmaciones dentro del documento y encontrar:
-- Contradicciones directas (afirmaciones que se niegan mutuamente)
-- Inconsistencias (datos, cifras o métodos que no cuadran entre secciones)
-- Afirmaciones sin sustento que contradicen los datos presentados
-
-Responde ÚNICAMENTE con un JSON válido con esta forma exacta:
-{
-  "evaluacion_general": "evaluación breve de la coherencia interna del documento",
-  "hallazgos": [
-    {
-      "cita": "fragmento TEXTUAL EXACTO del documento donde está el problema (máximo 40 palabras)",
-      "cita_secundaria": "fragmento TEXTUAL EXACTO que contradice al primero, si aplica",
-      "tipo": "contradiccion|inconsistencia",
-      "severidad": "baja|media|alta",
-      "explicacion": "descripción clara del conflicto entre ambos fragmentos"
-    }
-  ]
-}
-
-Reglas: las citas deben ser copias literales del documento para poder resaltarlas.
-Si el documento es coherente, devuelve "hallazgos": []. No inventes problemas.
-Responde en español."""
+SYSTEM = """Detector de contradicciones en papers. SOLO JSON compacto, sin markdown:
+{"evaluacion_general":"1-2 frases","hallazgos":[{"cita":"copia literal ≤30 palabras","cita_secundaria":"fragmento que contradice o vacío","tipo":"contradiccion|inconsistencia","severidad":"baja|media|alta","explicacion":"el conflicto"}]}
+Máximo 5 hallazgos. Si es coherente, hallazgos=[]. No inventes. Español."""
 
 
 async def run_contradictions(
-    settings: AppSettings, text: str, reader_output: dict
+    settings: AppSettings, text: str, reader_output: dict | None = None
 ) -> tuple[dict, list[dict]]:
+    reader_output = reader_output or {}
     context = json.dumps(
         {
             "resumen": reader_output.get("resumen", ""),
@@ -40,11 +21,13 @@ async def run_contradictions(
         },
         ensure_ascii=False,
     )
+    extra = f"Contexto (opcional): {context}\n\n" if reader_output.get("resumen") else ""
     result = await call_agent_json(
         settings,
         SYSTEM,
-        f"Contexto del agente lector: {context}\n\nDocumento a analizar:\n\n{truncate_doc(text)}",
+        f"{extra}Documento a analizar:\n\n{truncate_doc(text)}",
         settings.contradictions_instructions,
+        max_tokens=900,
     )
     findings = []
     for raw in result.get("hallazgos", []) or []:

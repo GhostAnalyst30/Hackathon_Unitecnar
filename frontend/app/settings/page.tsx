@@ -39,18 +39,18 @@ const PROVIDERS = [
 const CHAT_PRESETS: Record<string, { id: string; label: string; model: string }[]> = {
   openrouter: [
     {
+      id: "gemma-26b-free",
+      label: "Gratis · rápido · Gemma 4 26B MoE (visión)",
+      model: "google/gemma-4-26b-a4b-it:free",
+    },
+    {
       id: "gemma-31b-free",
       label: "Gratis · Gemma 4 31B (visión + documentos)",
       model: "google/gemma-4-31b-it:free",
     },
     {
-      id: "gemma-26b-free",
-      label: "Gratis · Gemma 4 26B MoE (visión, rápido)",
-      model: "google/gemma-4-26b-a4b-it:free",
-    },
-    {
       id: "nemotron-ultra-free",
-      label: "Gratis · Nemotron 3 Ultra 550B (agentes, razonamiento)",
+      label: "Gratis · Nemotron 3 Ultra 550B (muy lento)",
       model: "nvidia/nemotron-3-ultra-550b-a55b:free",
     },
     {
@@ -75,16 +75,16 @@ const CHAT_PRESETS: Record<string, { id: string; label: string; model: string }[
 
 const OCR_PRESETS = [
   {
+    id: "or-gemma-26b-free",
+    label: "Gratis · rápido · OpenRouter · Gemma 4 26B MoE (visión)",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "google/gemma-4-26b-a4b-it:free",
+  },
+  {
     id: "or-gemma-31b-free",
     label: "Gratis · OpenRouter · Gemma 4 31B (visión, documentos)",
     base_url: "https://openrouter.ai/api/v1",
     model: "google/gemma-4-31b-it:free",
-  },
-  {
-    id: "or-gemma-26b-free",
-    label: "Gratis · OpenRouter · Gemma 4 26B MoE (visión)",
-    base_url: "https://openrouter.ai/api/v1",
-    model: "google/gemma-4-26b-a4b-it:free",
   },
   {
     id: "or-free-auto",
@@ -265,7 +265,7 @@ export default function SettingsPage() {
                   if (first) set("chat_model", first.model);
                   if (next === "openrouter") {
                     set("ocr_base_url", "https://openrouter.ai/api/v1");
-                    set("ocr_model", "google/gemma-4-31b-it:free");
+                    set("ocr_model", "google/gemma-4-26b-a4b-it:free");
                   }
                 }}
                 className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-accent"
@@ -308,7 +308,7 @@ export default function SettingsPage() {
               <input
                 value={settings.chat_model}
                 onChange={(e) => set("chat_model", e.target.value)}
-                placeholder="google/gemma-4-31b-it:free"
+                placeholder="google/gemma-4-26b-a4b-it:free"
                 className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-accent"
               />
             </label>
@@ -365,7 +365,7 @@ export default function SettingsPage() {
           </h2>
           <p className="mb-4 mt-1 text-xs text-ink-faint">
             Por defecto un modelo de visión <strong>gratis</strong> de OpenRouter
-            (Gemma 4 31B :free). Si la API key queda vacía se reutiliza la de los
+            (Gemma 4 26B :free). Si la API key queda vacía se reutiliza la de los
             agentes. Los presets de pago quedan al final por si los necesitas.
           </p>
 

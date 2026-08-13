@@ -41,6 +41,13 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface ProcessLog {
+  id: string;
+  agent: string;
+  message: string;
+  created_at: string;
+}
+
 export interface Suggestion {
   original: string;
   suggested: string;
@@ -66,6 +73,7 @@ export interface DocumentDetail extends DocumentSummary {
   findings: Finding[];
   agent_outputs: AgentOutput[];
   chat_messages: ChatMessage[];
+  process_logs: ProcessLog[];
 }
 
 export interface CrossrefVerification {
@@ -103,6 +111,9 @@ export interface DocumentEvent {
   document_id: string;
   status: string;
   agent?: string;
+  message?: string;
+  log_id?: string;
+  created_at?: string;
   score?: number;
   classification?: string;
   error?: string;

@@ -39,7 +39,12 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(refresh, [refresh]);
-  useDocumentEvents(useCallback(() => refresh(), [refresh]));
+  useDocumentEvents(
+    useCallback((event) => {
+      if (event.status === "agent_log") return;
+      refresh();
+    }, [refresh]),
+  );
 
   async function handleDelete(id: string, filename: string) {
     if (!confirm(`¿Eliminar "${filename}" y todo su análisis?`)) return;

@@ -23,8 +23,10 @@ import { AGENT_LABELS } from "@/lib/labels";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { ChatPanel } from "@/components/ChatPanel";
+import { AgentProcessFeed } from "@/components/AgentProcessFeed";
+import { HighlightLegend } from "@/components/HighlightLegend";
 import { DocumentEditor, type EditorHandle } from "@/components/Editor";
-import type { DocumentDetail, Finding, Suggestion } from "@/lib/types";
+import type { DocumentDetail, Finding, ProcessLog, Suggestion } from "@/lib/types";
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 
@@ -69,22 +71,41 @@ export default function WorkspacePage({
     useCallback(
       (event) => {
         if (event.document_id !== id) return;
+        if (event.status === "agent_log") {
+          const entry: ProcessLog = {
+            id: event.log_id ?? `local-${Date.now()}-${Math.random()}`,
+            agent: event.agent ?? "ingest",
+            message: event.message ?? "",
+            created_at: event.created_at ?? new Date().toISOString(),
+          };
+          setDoc((prev) => {
+            if (!prev) return prev;
+            if ((prev.process_logs ?? []).some((l) => l.id === entry.id)) return prev;
+            return { ...prev, process_logs: [...(prev.process_logs ?? []), entry] };
+          });
+          return;
+        }
         if (event.status === "agent_done" && event.agent) {
           setAgentsDone((prev) =>
             prev.includes(event.agent!) ? prev : [...prev, event.agent!],
           );
           return;
         }
+        if (event.status === "analyzing") {
+          refetch(true);
+          return;
+        }
         if (["awaiting_review", "error"].includes(event.status)) {
           setAgentsDone([]);
           setReanalyzing(false);
-          // El texto pudo cambiar solo si venía de ingesta (primera vez)
-          refetch(!doc?.content_html);
+          refetch(true);
         } else {
-          setDoc((prev) => (prev ? { ...prev, status: event.status as DocumentDetail["status"] } : prev));
+          setDoc((prev) =>
+            prev ? { ...prev, status: event.status as DocumentDetail["status"] } : prev,
+          );
         }
       },
-      [id, refetch, doc?.content_html],
+      [id, refetch],
     ),
   );
 
@@ -127,6 +148,7 @@ export default function WorkspacePage({
     if (!doc) return;
     setReanalyzing(true);
     setAgentsDone([]);
+    setDoc((prev) => (prev ? { ...prev, process_logs: [] } : prev));
     try {
       await reanalyzeDocument(doc.id);
       setDoc((prev) => (prev ? { ...prev, status: "queued" } : prev));
@@ -252,12 +274,13 @@ export default function WorkspacePage({
         </aside>
 
         {/* Editor */}
-        <section className="min-w-0 flex-1 overflow-y-auto">
+        <section className="flex min-w-0 flex-1 flex-col">
+          <AgentProcessFeed logs={doc.process_logs ?? []} busy={busy} />
           {busy && (
-            <div className="sticky top-0 z-30 border-b border-[#d9c496] bg-[#efe4cf] px-4 py-2 text-xs font-medium text-warn">
+            <div className="z-30 border-b border-[#d9c496] bg-[#efe4cf] px-4 py-2 text-xs font-medium text-warn">
               <span className="pulse-soft mr-2 inline-block h-2 w-2 rounded-full bg-warn" />
               {doc.status === "extracting"
-                ? "Extrayendo texto del documento…"
+                ? "Extrayendo la estructura del documento…"
                 : "Pipeline de agentes en ejecución…"}
               <span className="ml-3 text-ink-faint">
                 {PIPELINE_STEPS.map((step) => (
@@ -274,9 +297,11 @@ export default function WorkspacePage({
               «Re-analizar».
             </div>
           )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-6 py-8">
             {doc.content_html ? (
               <div className="rise-in rounded-sm border border-line bg-paper-raised px-10 py-12 shadow-[0_1px_3px_rgba(34,29,21,0.08),0_8px_28px_rgba(34,29,21,0.06)]">
+                <HighlightLegend />
                 <DocumentEditor
                   key={editorKey}
                   ref={editorRef}
@@ -297,6 +322,7 @@ export default function WorkspacePage({
                 )}
               </div>
             )}
+          </div>
           </div>
         </section>
 

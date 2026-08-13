@@ -7,6 +7,7 @@ import {
 } from "react";
 import { EditorContent, useEditor, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { TableKit } from "@tiptap/extension-table";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -200,7 +201,11 @@ export const DocumentEditor = forwardRef<
   }
 >(function DocumentEditor({ initialContent, findings, onChange }, ref) {
   const editor = useEditor({
-    extensions: [StarterKit, FindingHighlights],
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      TableKit.configure({ table: { resizable: false } }),
+      FindingHighlights,
+    ],
     content: initialContent,
     immediatelyRender: false,
     onUpdate({ editor }) {

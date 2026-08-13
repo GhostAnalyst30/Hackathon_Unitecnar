@@ -1,16 +1,42 @@
-from ...config import MAX_DOC_CHARS
+from ...config import MAX_DOC_HEAD_CHARS, MAX_DOC_TAIL_CHARS
 from ...domain.entities import AppSettings
 from ...domain.services import VALID_KINDS, VALID_SEVERITIES
 from ...infrastructure.llm import chat_completion, extract_json
 
 
 def truncate_doc(text: str) -> str:
-    if len(text) <= MAX_DOC_CHARS:
+    """Envía inicio + final del paper (abstract/métodos y conclusiones/refs)."""
+    budget = MAX_DOC_HEAD_CHARS + MAX_DOC_TAIL_CHARS
+    if len(text) <= budget:
         return text
+    head = text[:MAX_DOC_HEAD_CHARS]
+    tail = text[-MAX_DOC_TAIL_CHARS:]
+    omitted = len(text) - budget
     return (
-        text[:MAX_DOC_CHARS]
-        + "\n\n[... documento truncado por longitud; analiza lo disponible ...]"
+        f"{head}\n\n[... {omitted} caracteres centrales omitidos para ir más rápido ...]\n\n{tail}"
     )
+
+
+def bibliography_slice(text: str) -> str:
+    """Para el agente de referencias: tema breve + bloque de bibliografía."""
+    lower = text.lower()
+    markers = (
+        "\nreferences\n",
+        "\nreferencias\n",
+        "\nbibliography\n",
+        "\nbibliografía\n",
+        "\nbibliografia\n",
+        "\nworks cited\n",
+    )
+    idx = -1
+    for marker in markers:
+        found = lower.rfind(marker)
+        if found > idx:
+            idx = found
+    head = text[:2200]
+    if idx != -1:
+        return f"{head}\n\n--- BIBLIOGRAFÍA ---\n{text[idx:idx + 9000]}"
+    return truncate_doc(text)
 
 
 def normalize_finding(raw: dict, agent: str, default_kind: str) -> dict | None:
@@ -40,6 +66,7 @@ async def call_agent_json(
     system_prompt: str,
     user_prompt: str,
     custom_instructions: str = "",
+    max_tokens: int = 1100,
 ) -> dict:
     system = system_prompt
     if custom_instructions.strip():
@@ -53,5 +80,6 @@ async def call_agent_json(
             {"role": "system", "content": system},
             {"role": "user", "content": user_prompt},
         ],
+        max_tokens=max_tokens,
     )
     return extract_json(content)

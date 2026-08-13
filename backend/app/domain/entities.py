@@ -51,6 +51,11 @@ class Document(Base):
     chat_messages: Mapped[list["ChatMessage"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    process_logs: Mapped[list["ProcessLog"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="ProcessLog.created_at",
+    )
 
 
 class Finding(Base):
@@ -96,6 +101,20 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     document: Mapped[Document] = relationship(back_populates="chat_messages")
+
+
+class ProcessLog(Base):
+    """Comentario de proceso de un agente, para visualizar el pipeline en vivo."""
+
+    __tablename__ = "process_logs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"))
+    agent: Mapped[str] = mapped_column(String(32))  # ingest | reader | contradictions | references | classifier
+    message: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    document: Mapped[Document] = relationship(back_populates="process_logs")
 
 
 class AppSettings(Base):

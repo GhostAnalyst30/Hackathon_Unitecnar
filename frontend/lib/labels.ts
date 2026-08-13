@@ -54,11 +54,19 @@ export const CLASSIFICATION_META: Record<
 };
 
 export const AGENT_LABELS: Record<string, string> = {
+  ingest: "Extracción",
   reader: "Agente lector",
   contradictions: "Agente de contradicciones",
   references: "Agente de referencias",
   classifier: "Agente clasificador",
 };
+
+export const HIGHLIGHT_LEGEND: { kind: FindingKind; label: string }[] = [
+  { kind: "importante", label: "Importante" },
+  { kind: "alerta", label: "Alerta" },
+  { kind: "contradiccion", label: "Contradicción" },
+  { kind: "referencia", label: "Referencia" },
+];
 
 export function scoreColor(score: number | null): string {
   if (score === null) return "var(--ink-faint)";
