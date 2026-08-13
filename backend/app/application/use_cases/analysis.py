@@ -220,8 +220,9 @@ async def _node_references(state: PipelineState) -> dict:
         "references",
         "Crossref: "
         f"{xr.get('verificadas', 0)} verificada(s), "
-        f"{xr.get('no_encontradas', 0)} no encontrada(s) de {xr.get('total', 0)}. "
-        f"{len(findings)} alerta(s) de referencias.",
+        f"{xr.get('no_encontradas', 0)} no indexada(s) de {xr.get('total', 0)} "
+        "(las no indexadas no restan puntaje). "
+        f"{len(findings)} marca(s) en bibliografía.",
     )
     return {"references_output": output, "references_findings": findings}
 

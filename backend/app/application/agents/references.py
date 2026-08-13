@@ -51,12 +51,13 @@ async def run_references(
                 {
                     "agent": "references",
                     "kind": "referencia",
-                    "severity": "media",
+                    "severity": "baja",
+                    "score_impact": False,
                     "quote": str(ref.get("referencia", ""))[:300],
                     "quote_secondary": None,
                     "explanation": (
-                        "No se encontró esta fuente en Crossref: puede ser inexistente, "
-                        "estar mal citada o no estar indexada. Verifícala manualmente."
+                        "No aparece en Crossref: puede no estar indexada o estar citada "
+                        "de otra forma. No resta puntaje; si se verifica, suma."
                     ),
                 }
             )

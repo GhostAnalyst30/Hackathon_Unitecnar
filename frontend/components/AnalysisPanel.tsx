@@ -222,6 +222,46 @@ export function AnalysisPanel({
         )}
         {outputs.classifier && (
           <Section icon={Scale} title={AGENT_LABELS.classifier}>
+            {outputs.classifier.ejes != null &&
+              typeof outputs.classifier.ejes === "object" && (
+                <div className="space-y-1.5 rounded-md bg-paper-sunken px-2.5 py-2 text-xs">
+                  {(
+                    [
+                      ["contenido", "Contenido"],
+                      ["coherencia", "Coherencia"],
+                      ["referencias", "Referencias"],
+                    ] as const
+                  ).map(([key, label]) => {
+                    const value = Number(
+                      (outputs.classifier?.ejes as Record<string, unknown>)[key] ?? 0,
+                    );
+                    const weightPct = Math.round(
+                      Number(
+                        (outputs.classifier?.pesos as Record<string, unknown> | undefined)?.[
+                          key
+                        ] ?? (key === "contenido" ? 0.65 : key === "coherencia" ? 0.3 : 0.05),
+                      ) * 100,
+                    );
+                    return (
+                      <div key={key} className="flex items-center gap-2">
+                        <span className="w-[7.2rem] shrink-0 text-ink-soft">
+                          {label} · {weightPct}%
+                        </span>
+                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper">
+                          <span
+                            className="block h-full rounded-full bg-accent"
+                            style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+                          />
+                        </span>
+                        <span className="w-8 text-right font-semibold text-ink">{value}</span>
+                      </div>
+                    );
+                  })}
+                  <p className="pt-1 text-[10px] text-ink-faint">
+                    Crossref es residual (5%): no marca un paper como malo.
+                  </p>
+                </div>
+              )}
             <p>{String(outputs.classifier.justificacion ?? "")}</p>
             {Array.isArray(outputs.classifier.recomendaciones) &&
               outputs.classifier.recomendaciones.length > 0 && (
