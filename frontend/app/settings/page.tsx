@@ -16,8 +16,13 @@ import type { Settings } from "@/lib/types";
 const PROVIDERS = [
   {
     value: "openrouter",
-    label: "OpenRouter (recomendado — modelos gratis)",
-    hint: "https://openrouter.ai/api/v1 · API key gratuita sk-or-… · 50 peticiones/día sin recargar",
+    label: "OpenRouter (barato · Gemini Flash / GPT-4o mini)",
+    hint: "https://openrouter.ai/api/v1 · key sk-or-… · modelos de pago baratos (hace falta un poco de crédito)",
+  },
+  {
+    value: "gemini",
+    label: "Google Gemini (API gratis · Google AI Studio)",
+    hint: "https://aistudio.google.com/apikey · key AIza… · Gemini Flash con cupo gratis (visión incluida)",
   },
   {
     value: "qianfan",
@@ -36,32 +41,45 @@ const PROVIDERS = [
   },
 ] as const;
 
+const GEMINI_BASE_URL =
+  "https://generativelanguage.googleapis.com/v1beta/openai/";
+
 const CHAT_PRESETS: Record<string, { id: string; label: string; model: string }[]> = {
   openrouter: [
     {
+      id: "gemini-25-flash-lite",
+      label: "Barato · Gemini 2.5 Flash-Lite (visión, recomendado)",
+      model: "google/gemini-2.5-flash-lite",
+    },
+    {
+      id: "gemini-25-flash",
+      label: "Barato · Gemini 2.5 Flash (visión)",
+      model: "google/gemini-2.5-flash",
+    },
+    {
+      id: "gpt-4o-mini",
+      label: "Barato · GPT-4o mini (visión)",
+      model: "openai/gpt-4o-mini",
+    },
+    {
+      id: "gemini-35-flash",
+      label: "Barato · Gemini 3.5 Flash (visión)",
+      model: "google/gemini-3.5-flash",
+    },
+    {
       id: "gemma-26b-free",
-      label: "Gratis · rápido · Gemma 4 26B MoE (visión)",
+      label: "Gratis · Gemma 4 26B MoE (visión, tope 50/día)",
       model: "google/gemma-4-26b-a4b-it:free",
     },
     {
       id: "gemma-31b-free",
-      label: "Gratis · Gemma 4 31B (visión + documentos)",
+      label: "Gratis · Gemma 4 31B (visión, tope 50/día)",
       model: "google/gemma-4-31b-it:free",
     },
     {
-      id: "nemotron-ultra-free",
-      label: "Gratis · Nemotron 3 Ultra 550B (muy lento)",
-      model: "nvidia/nemotron-3-ultra-550b-a55b:free",
-    },
-    {
       id: "or-free-auto",
-      label: "Gratis · Auto (OpenRouter elige un modelo :free)",
+      label: "Gratis · Auto (OpenRouter elige un :free, tope 50/día)",
       model: "openrouter/free",
-    },
-    {
-      id: "gemini-flash",
-      label: "De pago · Gemini 3.5 Flash",
-      model: "google/gemini-3.5-flash",
     },
   ],
   qianfan: [
@@ -70,25 +88,83 @@ const CHAT_PRESETS: Record<string, { id: string; label: string; model: string }[
   openai: [
     { id: "gpt-4o-mini", label: "GPT-4o mini", model: "gpt-4o-mini" },
   ],
+  gemini: [
+    {
+      id: "gemini-25-flash",
+      label: "Gratis · Gemini 2.5 Flash (visión, recomendado)",
+      model: "gemini-2.5-flash",
+    },
+    {
+      id: "gemini-25-flash-lite",
+      label: "Gratis · Gemini 2.5 Flash-Lite (más rápido)",
+      model: "gemini-2.5-flash-lite",
+    },
+    {
+      id: "gemini-flash-latest",
+      label: "Gratis · Gemini Flash latest",
+      model: "gemini-flash-latest",
+    },
+    {
+      id: "gemini-20-flash",
+      label: "Gratis · Gemini 2.0 Flash",
+      model: "gemini-2.0-flash",
+    },
+  ],
   custom: [],
 };
 
 const OCR_PRESETS = [
   {
+    id: "or-gemini-lite",
+    label: "Barato · OpenRouter · Gemini 2.5 Flash-Lite (visión)",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "google/gemini-2.5-flash-lite",
+  },
+  {
+    id: "or-gemini-25",
+    label: "Barato · OpenRouter · Gemini 2.5 Flash (visión)",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "google/gemini-2.5-flash",
+  },
+  {
+    id: "or-gpt-4o-mini",
+    label: "Barato · OpenRouter · GPT-4o mini (visión)",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4o-mini",
+  },
+  {
+    id: "or-gemini-35",
+    label: "Barato · OpenRouter · Gemini 3.5 Flash (visión)",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "google/gemini-3.5-flash",
+  },
+  {
+    id: "gemini-flash-ocr",
+    label: "Gratis · Gemini API · 2.5 Flash (visión)",
+    base_url: GEMINI_BASE_URL,
+    model: "gemini-2.5-flash",
+  },
+  {
+    id: "gemini-flash-lite-ocr",
+    label: "Gratis · Gemini API · 2.5 Flash-Lite",
+    base_url: GEMINI_BASE_URL,
+    model: "gemini-2.5-flash-lite",
+  },
+  {
     id: "or-gemma-26b-free",
-    label: "Gratis · rápido · OpenRouter · Gemma 4 26B MoE (visión)",
+    label: "Gratis · OpenRouter · Gemma 4 26B MoE (visión, tope 50/día)",
     base_url: "https://openrouter.ai/api/v1",
     model: "google/gemma-4-26b-a4b-it:free",
   },
   {
     id: "or-gemma-31b-free",
-    label: "Gratis · OpenRouter · Gemma 4 31B (visión, documentos)",
+    label: "Gratis · OpenRouter · Gemma 4 31B (visión, tope 50/día)",
     base_url: "https://openrouter.ai/api/v1",
     model: "google/gemma-4-31b-it:free",
   },
   {
     id: "or-free-auto",
-    label: "Gratis · OpenRouter · Auto (elige un modelo :free con visión)",
+    label: "Gratis · OpenRouter · Auto (:free, tope 50/día)",
     base_url: "https://openrouter.ai/api/v1",
     model: "openrouter/free",
   },
@@ -99,14 +175,8 @@ const OCR_PRESETS = [
     model: "qianfan-ocr",
   },
   {
-    id: "or-gemini-flash",
-    label: "De pago · OpenRouter · Gemini 3.5 Flash",
-    base_url: "https://openrouter.ai/api/v1",
-    model: "google/gemini-3.5-flash",
-  },
-  {
     id: "or-qwen-vl",
-    label: "De pago · OpenRouter · Qwen3-VL 235B",
+    label: "Caro · OpenRouter · Qwen3-VL 235B",
     base_url: "https://openrouter.ai/api/v1",
     model: "qwen/qwen3-vl-235b-a22b-instruct",
   },
@@ -228,9 +298,18 @@ export default function SettingsPage() {
           Configuración
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Modelos, API keys e instrucciones personalizadas. Por defecto usa
-          OpenRouter con modelos <strong>gratis</strong> (`:free`): solo necesitas
-          una key de{" "}
+          Modelos, API keys e instrucciones personalizadas. Puedes usar{" "}
+          <strong>Google Gemini</strong> con una key gratis de{" "}
+          <a
+            href="https://aistudio.google.com/apikey"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-accent underline"
+          >
+            Google AI Studio
+          </a>{" "}
+          (Flash, cupo gratis de Google) u OpenRouter con modelos{" "}
+          <strong>baratos de pago</strong> (Gemini Flash-Lite, GPT-4o mini) desde{" "}
           <a
             href="https://openrouter.ai/keys"
             target="_blank"
@@ -238,8 +317,9 @@ export default function SettingsPage() {
             className="font-medium text-accent underline"
           >
             openrouter.ai/keys
-          </a>{" "}
-          (50 peticiones/día sin recargar). Todo se guarda en tu base local.
+          </a>
+          . En OpenRouter hace falta un poco de crédito; los `:free` se acaban a
+          las 50 peticiones/día. Todo se guarda en tu base local.
         </p>
       </div>
 
@@ -263,21 +343,26 @@ export default function SettingsPage() {
                   set("provider", next);
                   const first = CHAT_PRESETS[next]?.[0];
                   if (first) set("chat_model", first.model);
+                  if (next === "gemini") {
+                    set("chat_fallback_models", "gemini-2.5-flash-lite\ngemini-flash-latest");
+                    set("ocr_base_url", GEMINI_BASE_URL);
+                    set("ocr_model", "gemini-2.5-flash");
+                    set(
+                      "ocr_fallback_models",
+                      "gemini-2.5-flash-lite\ngemini-flash-latest",
+                    );
+                  }
                   if (next === "openrouter") {
                     set("ocr_base_url", "https://openrouter.ai/api/v1");
-                    set("ocr_model", "google/gemma-4-26b-a4b-it:free");
-                    if (!(settings.chat_fallback_models ?? "").trim()) {
-                      set(
-                        "chat_fallback_models",
-                        "google/gemma-4-31b-it:free\nopenrouter/free",
-                      );
-                    }
-                    if (!(settings.ocr_fallback_models ?? "").trim()) {
-                      set(
-                        "ocr_fallback_models",
-                        "google/gemma-4-31b-it:free\nopenrouter/free",
-                      );
-                    }
+                    set("ocr_model", "google/gemini-2.5-flash-lite");
+                    set(
+                      "chat_fallback_models",
+                      "google/gemini-2.5-flash\nopenai/gpt-4o-mini",
+                    );
+                    set(
+                      "ocr_fallback_models",
+                      "google/gemini-2.5-flash\nopenai/gpt-4o-mini",
+                    );
                   }
                 }}
                 className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-accent"
@@ -320,7 +405,11 @@ export default function SettingsPage() {
               <input
                 value={settings.chat_model}
                 onChange={(e) => set("chat_model", e.target.value)}
-                placeholder="google/gemma-4-26b-a4b-it:free"
+                placeholder={
+                  settings.provider === "gemini"
+                    ? "gemini-2.5-flash"
+                    : "google/gemini-2.5-flash-lite"
+                }
                 className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-accent"
               />
             </label>
@@ -331,13 +420,18 @@ export default function SettingsPage() {
               Modelos de respaldo
             </span>
             <p className="mb-1.5 text-xs text-ink-faint">
-              Si el modelo principal no responde, se prueban estos en orden (uno por línea).
+              Si el modelo principal no responde, cada agente reintenta varias veces
+              y recorre esta lista en orden (uno por línea) antes de mostrar error.
             </p>
             <textarea
               value={settings.chat_fallback_models ?? ""}
               onChange={(e) => set("chat_fallback_models", e.target.value)}
               rows={3}
-              placeholder={"google/gemma-4-31b-it:free\nopenrouter/free"}
+              placeholder={
+                settings.provider === "gemini"
+                  ? "gemini-2.5-flash-lite\ngemini-flash-latest"
+                  : "google/gemini-2.5-flash\nopenai/gpt-4o-mini"
+              }
               className="w-full resize-y rounded-md border border-line bg-paper px-3 py-2 font-mono text-xs outline-none placeholder:text-ink-faint focus:border-accent"
             />
             {(CHAT_PRESETS[settings.provider] ?? []).length > 0 && (
@@ -357,7 +451,7 @@ export default function SettingsPage() {
                       }}
                       className="rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-soft hover:border-accent hover:text-accent"
                     >
-                      + {p.label.replace(/^Gratis · (rápido · )?/, "").replace(/^De pago · /, "")}
+                      + {p.label.replace(/^(Gratis|Barato|Caro|De pago) · (rápido · )?/i, "")}
                     </button>
                   ))}
               </div>
@@ -387,7 +481,13 @@ export default function SettingsPage() {
                 type={showKey ? "text" : "password"}
                 value={settings.api_key}
                 onChange={(e) => set("api_key", e.target.value)}
-                placeholder="sk-or-… (gratis en OpenRouter) · bce-v3/… · sk-…"
+                placeholder={
+                  settings.provider === "gemini"
+                    ? "AIza… (gratis en aistudio.google.com/apikey)"
+                    : settings.provider === "openrouter"
+                      ? "sk-or-… (openrouter.ai/keys · con un poco de crédito)"
+                      : "sk-or-… · AIza… · bce-v3/… · sk-…"
+                }
                 className="w-full flex-1 rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-accent"
               />
               <button
@@ -414,9 +514,9 @@ export default function SettingsPage() {
             OCR — documentos escaneados e imágenes
           </h2>
           <p className="mb-4 mt-1 text-xs text-ink-faint">
-            Por defecto un modelo de visión <strong>gratis</strong> de OpenRouter
-            (Gemma 4 26B :free). Si la API key queda vacía se reutiliza la de los
-            agentes. Los presets de pago quedan al final por si los necesitas.
+            Por defecto un modelo de visión <strong>barato</strong>. Con OpenRouter:
+            Gemini 2.5 Flash-Lite. Con Gemini API: Flash nativo. Si la API key
+            queda vacía se reutiliza la de los agentes.
           </p>
 
           <label className="mb-4 block">
@@ -477,13 +577,18 @@ export default function SettingsPage() {
               Modelos OCR de respaldo
             </span>
             <p className="mb-1.5 text-xs text-ink-faint">
-              Si el OCR principal falla, se prueban estos en orden.
+              Si el OCR principal falla, se reintenta y se recorre esta lista
+              completa antes de marcar error.
             </p>
             <textarea
               value={settings.ocr_fallback_models ?? ""}
               onChange={(e) => set("ocr_fallback_models", e.target.value)}
               rows={3}
-              placeholder={"google/gemma-4-31b-it:free\nopenrouter/free"}
+              placeholder={
+                settings.ocr_base_url.includes("generativelanguage.googleapis.com")
+                  ? "gemini-2.5-flash-lite\ngemini-flash-latest"
+                  : "google/gemini-2.5-flash\nopenai/gpt-4o-mini"
+              }
               className="w-full resize-y rounded-md border border-line bg-paper px-3 py-2 font-mono text-xs outline-none placeholder:text-ink-faint focus:border-accent"
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -500,7 +605,7 @@ export default function SettingsPage() {
                   }}
                   className="rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-soft hover:border-accent hover:text-accent"
                 >
-                  + {p.label.replace(/^Gratis · (rápido · )?OpenRouter · /, "").replace(/^Gratis · OpenRouter · /, "").replace(/^De pago · .+ · /, "")}
+                  + {p.label.replace(/^(Gratis|Barato|Caro|De pago) · (rápido · )?(OpenRouter · |Gemini API · )?/i, "").replace(/^OpenRouter · /, "")}
                 </button>
               ))}
             </div>

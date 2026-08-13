@@ -2,10 +2,24 @@
 de edición estructuradas que el usuario aplica con un clic (human-in-the-loop).
 """
 
+import asyncio
 import json
 
+from ...config import LLM_CHAIN_ROUNDS
 from ...domain.entities import AppSettings, ChatMessage, Document
-from ...infrastructure.llm import chat_completion, extract_json
+from ...infrastructure.llm import (
+    LLMEmptyResponse,
+    LLMNotConfigured,
+    LLMQuotaExceeded,
+    PUBLIC_READ_ERROR,
+    chat_completion,
+    chat_model_chain,
+    describe_llm_error,
+    extract_json,
+    is_free_model,
+    notify_model_retry,
+    retry_target_label,
+)
 from .base import truncate_doc
 
 SYSTEM = """Eres el asistente de edición de un analizador personal de papers académicos.
@@ -80,23 +94,67 @@ async def run_chat(
         messages.append({"role": msg.role, "content": msg.content})
     messages.append({"role": "user", "content": user_message})
 
-    raw = await chat_completion(settings, messages, temperature=0.4)
-    try:
-        parsed = extract_json(raw)
-    except (ValueError, json.JSONDecodeError):
-        return raw.strip(), []
-
-    reply = str(parsed.get("respuesta", "")).strip() or raw.strip()
-    suggestions = []
-    for s in parsed.get("sugerencias", []) or []:
-        original = str(s.get("original", "")).strip()
-        suggested = str(s.get("sugerido", "")).strip()
-        if original and suggested:
-            suggestions.append(
-                {
-                    "original": original,
-                    "suggested": suggested,
-                    "reason": str(s.get("motivo", "")).strip(),
-                }
-            )
-    return reply, suggestions
+    chain = chat_model_chain(settings)
+    last_raw = ""
+    last_exc: Exception | None = None
+    rounds = max(1, LLM_CHAIN_ROUNDS)
+    skip_free = False
+    for round_i in range(rounds):
+        if round_i:
+            if skip_free and all(is_free_model(m) for m in chain):
+                break
+            await asyncio.sleep(3.0)
+        for index, model in enumerate(chain):
+            if skip_free and is_free_model(model):
+                continue
+            try:
+                raw = await chat_completion(
+                    settings,
+                    messages,
+                    temperature=0.4,
+                    model=model,
+                    chain_rounds=1,
+                )
+                last_raw = raw
+                try:
+                    parsed = extract_json(raw)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    last_exc = exc
+                    label = retry_target_label(chain, index, round_i, rounds)
+                    if label:
+                        notify_model_retry(model, label, "JSON inválido")
+                    continue
+                reply = str(parsed.get("respuesta", "")).strip() or raw.strip()
+                suggestions = []
+                for s in parsed.get("sugerencias", []) or []:
+                    original = str(s.get("original", "")).strip()
+                    suggested = str(s.get("sugerido", "")).strip()
+                    if original and suggested:
+                        suggestions.append(
+                            {
+                                "original": original,
+                                "suggested": suggested,
+                                "reason": str(s.get("motivo", "")).strip(),
+                            }
+                        )
+                return reply, suggestions
+            except LLMNotConfigured:
+                raise
+            except LLMQuotaExceeded as exc:
+                last_exc = exc
+                skip_free = True
+                paid = next((m for m in chain[index + 1 :] if not is_free_model(m)), None)
+                if paid:
+                    notify_model_retry(model, paid, describe_llm_error(exc))
+                    continue
+                raise
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                label = retry_target_label(chain, index, round_i, rounds)
+                if label:
+                    notify_model_retry(model, label, describe_llm_error(exc))
+    if last_raw.strip():
+        return last_raw.strip(), []
+    if isinstance(last_exc, LLMQuotaExceeded):
+        raise last_exc
+    raise LLMEmptyResponse(PUBLIC_READ_ERROR) from last_exc

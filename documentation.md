@@ -47,7 +47,7 @@ api/  →  application/  →  domain/
 
 - El humano tiene la última palabra (sugerencias de chat solo se aplican en el cliente al hacer clic).
 - Errores de LLM/API **no** se muestran crudos al usuario. Usar `public_error_message()` → *«El servidor no pudo leer los datos…»*. El traceback sí va a logs.
-- Preferir modelos OpenRouter `:free`. Fallbacks configurables.
+- Preferir modelos OpenRouter baratos de pago (Gemini Flash-Lite, GPT-4o mini). Fallbacks configurables: cada agente reintenta y recorre la cadena del usuario antes de marcar error.
 - Entidades de dominio no se serializan directo: pasar por DTOs (`application/dtos.py`).
 - Los routers no abren sesiones extra ni llaman a LangGraph; delegan en `use_cases`.
 
@@ -98,7 +98,7 @@ Clasificación local: `>=80` aprobable, `50–79` revisar, `<50` alto_riesgo.
 
 ### `app_settings`
 
-Proveedor (`openrouter` | `qianfan` | `openai` | `custom`), keys, `chat_model`, `ocr_model`, **fallbacks** (lista separada por coma/salto de línea), instrucciones extra por agente.
+Proveedor (`openrouter` | `gemini` | `qianfan` | `openai` | `custom`), keys, `chat_model`, `ocr_model`, **fallbacks** (lista separada por coma/salto de línea), instrucciones extra por agente. Gemini usa el endpoint OpenAI-compatible de Google AI Studio (`generativelanguage.googleapis.com/v1beta/openai/`).
 
 ---
 
@@ -137,7 +137,7 @@ Los agentes no reciben el HTML: reciben `content_text` recortado (`truncate_doc`
 | `classifier` | no (sí si hay `classifier_instructions`) | `clasificacion`, `justificacion`, `recomendaciones`, `puntaje` |
 | `chat` | sí | `respuesta` + `sugerencias[{original,sugerido,motivo}]` |
 
-`call_agent_json` exige JSON. Si un modelo falla (vacío, timeout, JSON roto), prueba el siguiente de `chat_model_chain` (principal + fallbacks). OCR igual con `ocr_model_chain`.
+`call_agent_json` exige JSON. Si un modelo falla (vacío, timeout, 429, JSON roto), el agente reintenta ese modelo varias veces y luego recorre `chat_model_chain` (principal + respaldos configurados) **dos pasadas** antes de marcar error. El feed de proceso muestra cada cambio de modelo. OCR igual con `ocr_model_chain`. Los tres agentes LLM no disparan más de 2 llamadas a la vez para no saturar el cupo `:free`.
 
 Crossref (`infrastructure/crossref.py`): API pública, `mailto` en User-Agent, hasta 8 lookups en paralelo, 1 row por búsqueda. Sin key.
 
@@ -225,7 +225,7 @@ El frontend:
 
 Cliente `AsyncOpenAI` reutilizado por `(base_url, api_key)`. Timeout 90s, `max_retries=1`.
 
-OpenRouter: `extra_body.provider.sort = throughput` y headers `HTTP-Referer` / `X-Title`.
+OpenRouter: `extra_body.provider.sort = throughput`. Gemini: `thinking_budget: 0`. Headers `HTTP-Referer` / `X-Title`.
 
 Cadena de modelos: `[chat_model] + parse(chat_fallback_models)` sin duplicados. Igual OCR.
 

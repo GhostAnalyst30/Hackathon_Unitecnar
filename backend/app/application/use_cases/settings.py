@@ -13,7 +13,9 @@ from ...config import (
 from ...domain.entities import AppSettings
 from ...infrastructure.llm import (
     LLMNotConfigured,
+    LLMQuotaExceeded,
     chat_completion,
+    is_free_model,
     ocr_image,
     public_error_message,
     resolve_chat_config,
@@ -37,12 +39,24 @@ def get_settings(session: Session) -> AppSettings:
         return settings
 
     # Si nunca se configuró una key y sigue el default anterior (Qianfan de pago),
-    # migra a OpenRouter con modelos :free para no gastar tokens.
+    # migra a OpenRouter con modelos baratos de pago.
     if not settings.api_key.strip() and settings.provider == "qianfan":
         settings.provider = DEFAULT_PROVIDER
         settings.chat_model = DEFAULT_CHAT_MODEL
         settings.ocr_base_url = DEFAULT_OCR_BASE_URL
         settings.ocr_model = DEFAULT_OCR_MODEL
+        settings.chat_fallback_models = DEFAULT_CHAT_FALLBACKS
+        settings.ocr_fallback_models = DEFAULT_OCR_FALLBACKS
+        session.commit()
+    # OpenRouter :free comparte un tope diario; pasar a Flash/GPT-4o mini baratos.
+    if settings.provider == "openrouter" and is_free_model(settings.chat_model):
+        settings.chat_model = DEFAULT_CHAT_MODEL
+        settings.chat_fallback_models = DEFAULT_CHAT_FALLBACKS
+        session.commit()
+    ocr_url = (settings.ocr_base_url or "").lower()
+    if "openrouter.ai" in ocr_url and is_free_model(settings.ocr_model):
+        settings.ocr_model = DEFAULT_OCR_MODEL
+        settings.ocr_fallback_models = DEFAULT_OCR_FALLBACKS
         session.commit()
     if not (getattr(settings, "chat_fallback_models", "") or "").strip():
         settings.chat_fallback_models = DEFAULT_CHAT_FALLBACKS
@@ -67,18 +81,25 @@ async def test_connection(session: Session, target: str) -> TestConnectionRespon
     try:
         if target == "ocr":
             resolve_ocr_config(settings)
-            await ocr_image(settings, _TEST_IMAGE, "Describe la imagen en una palabra.")
+            await ocr_image(
+                settings,
+                _TEST_IMAGE,
+                "Describe la imagen en una palabra.",
+                attempts_per_model=1,
+                chain_rounds=1,
+            )
             return TestConnectionResponseDTO(ok=True, detail="Conexión OCR exitosa")
         resolve_chat_config(settings)
         reply = await chat_completion(
             settings,
             [{"role": "user", "content": "Responde únicamente: OK"}],
+            attempts_per_model=1,
+            chain_rounds=1,
         )
         return TestConnectionResponseDTO(ok=True, detail="Conexión exitosa", data=reply[:100])
     except LLMNotConfigured as exc:
         return TestConnectionResponseDTO(ok=False, detail=public_error_message(exc))
-    except Exception:  # noqa: BLE001
-        return TestConnectionResponseDTO(
-            ok=False,
-            detail="No se pudo conectar. Revisa la API key o los modelos de respaldo.",
-        )
+    except LLMQuotaExceeded as exc:
+        return TestConnectionResponseDTO(ok=False, detail=public_error_message(exc))
+    except Exception as exc:  # noqa: BLE001
+        return TestConnectionResponseDTO(ok=False, detail=public_error_message(exc))

@@ -121,22 +121,22 @@ class AppSettings(Base):
     __tablename__ = "app_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
-    # qianfan | openai | openrouter | custom
+    # qianfan | openai | openrouter | gemini | custom
     provider: Mapped[str] = mapped_column(String(32), default="openrouter")
     api_key: Mapped[str] = mapped_column(Text, default="")
     base_url: Mapped[str] = mapped_column(String(512), default="")  # solo para provider=custom
-    chat_model: Mapped[str] = mapped_column(String(128), default="google/gemma-4-26b-a4b-it:free")
+    chat_model: Mapped[str] = mapped_column(String(128), default="google/gemini-2.5-flash-lite")
     chat_fallback_models: Mapped[str] = mapped_column(
-        Text, default="google/gemma-4-31b-it:free,openrouter/free"
+        Text, default="google/gemini-2.5-flash,openai/gpt-4o-mini"
     )
 
     ocr_api_key: Mapped[str] = mapped_column(Text, default="")  # si vacío, usa api_key
     ocr_base_url: Mapped[str] = mapped_column(
         String(512), default="https://openrouter.ai/api/v1"
     )
-    ocr_model: Mapped[str] = mapped_column(String(128), default="google/gemma-4-26b-a4b-it:free")
+    ocr_model: Mapped[str] = mapped_column(String(128), default="google/gemini-2.5-flash-lite")
     ocr_fallback_models: Mapped[str] = mapped_column(
-        Text, default="google/gemma-4-31b-it:free,openrouter/free"
+        Text, default="google/gemini-2.5-flash,openai/gpt-4o-mini"
     )
 
     reader_instructions: Mapped[str] = mapped_column(Text, default="")

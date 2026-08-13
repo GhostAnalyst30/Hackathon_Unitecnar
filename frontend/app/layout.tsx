@@ -22,7 +22,7 @@ const sourceSerif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "GhostAnalyst — Analizador de papers",
+  title: "CLUMI — Analizador de papers",
   description:
     "Analizador personal de papers con agentes, editor y chatbot. El humano siempre decide.",
 };
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-5">
             <Link href="/" className="group flex items-baseline gap-2">
               <span className="font-display text-xl font-semibold tracking-tight text-ink">
-                Ghost<span className="text-accent">Analyst</span>
+                CLU<span className="text-accent">MI</span>
               </span>
               <span className="hidden text-[11px] uppercase tracking-[0.18em] text-ink-faint sm:inline">
                 revisión de papers con agentes

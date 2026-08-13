@@ -92,7 +92,7 @@ export interface ReferenceEntry extends CrossrefVerification {
 }
 
 export interface Settings {
-  provider: "qianfan" | "openai" | "openrouter" | "custom";
+  provider: "qianfan" | "openai" | "openrouter" | "gemini" | "custom";
   api_key: string;
   base_url: string;
   chat_model: string;

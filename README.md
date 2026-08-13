@@ -35,18 +35,14 @@ ingesta (texto nativo u OCR)
   *no encontrada* (lo que genera una alerta y penaliza el puntaje).
 - **Frontend**: Next.js + Tailwind + TipTap (editor con resaltados por
   decoraciones, no destruye el contenido al editar).
-- **Modelos**: por defecto **OpenRouter con modelos gratis** (`:free`) —
-  Gemma 4 31B para los agentes y el OCR (es multimodal). También puedes usar
-  Qianfan u OpenAI. Los presets de pago quedan al final de Configuración. La
-  API key de OpenRouter se obtiene en [openrouter.ai/keys](https://openrouter.ai/keys)
-  (50 peticiones/día sin recargar).
+- **Modelos**: **OpenRouter** con Gemini 2.5 Flash-Lite / GPT-4o mini (baratos, de pago) o **Google Gemini** nativo ([AI Studio](https://aistudio.google.com/apikey)). También Qianfan u OpenAI.
 
 ## Requisitos
 
 - Python 3.11+ (probado con 3.13)
 - Node.js 20+
-- Una API key (gratis) de [OpenRouter](https://openrouter.ai/keys) — o de
-  Qianfan / OpenAI si prefieres esos proveedores
+- Una API key (gratis) de [Google AI Studio](https://aistudio.google.com/apikey)
+  (Gemini) o de [OpenRouter](https://openrouter.ai/keys) — o de Qianfan / OpenAI
 
 ## Puesta en marcha
 
@@ -73,12 +69,12 @@ Abre http://localhost:3000.
 
 Ve a **Configuración**:
 
-1. El proveedor por defecto es **OpenRouter** con Gemma 4 31B **gratis**
-   (`google/gemma-4-31b-it:free`) para agentes y OCR. Pega tu API key
-   `sk-or-…` de [openrouter.ai/keys](https://openrouter.ai/keys).
-2. Si quieres otro modelo, usa los presets marcados **Gratis** (Gemma 4 26B,
-   Auto `:free`) o los de pago al final. Si dejas la key del OCR vacía se
-   reutiliza la de los agentes.
+1. Elige **Google Gemini (API gratis)** y pega una key `AIza…` de
+   [aistudio.google.com/apikey](https://aistudio.google.com/apikey). El preset
+   por defecto es Gemini 2.5 Flash (visión) para agentes y OCR.
+2. O usa **OpenRouter** con Gemini 2.5 Flash-Lite / GPT-4o mini (baratos, de
+   pago) y una key `sk-or-…` de [openrouter.ai/keys](https://openrouter.ai/keys).
+   Hace falta un poco de crédito; los `:free` se acaban a las 50 peticiones/día.
 3. Usa **Probar conexión** para validar cada servicio antes de guardar.
 4. (Opcional) Personaliza las instrucciones de cada agente y del chatbot.
 
@@ -115,7 +111,7 @@ backend/
       use_cases/       # analysis (pipeline LangGraph), documents, chat, settings
     infrastructure/
       db.py            # SQLAlchemy + SQLite
-      llm.py           # clientes OpenAI-compatibles (Qianfan/OpenRouter/OpenAI)
+      llm.py           # clientes OpenAI-compatibles (Gemini/OpenRouter/Qianfan/OpenAI)
       ingest.py        # PDF / DOCX / imagen -> HTML editable (OCR si hace falta)
       crossref.py      # verificación de referencias en la Crossref REST API
       events.py        # broker SSE

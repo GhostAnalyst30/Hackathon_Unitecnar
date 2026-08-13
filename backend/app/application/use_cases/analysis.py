@@ -27,7 +27,7 @@ from ...domain.services import anchor_findings
 from ...infrastructure.db import SessionLocal
 from ...infrastructure.events import publish_document_event
 from ...infrastructure.ingest import ingest_file
-from ...infrastructure.llm import public_error_message
+from ...infrastructure.llm import chat_model_chain, public_error_message, retry_hook
 from ..agents.classifier import run_classifier
 from ..agents.contradictions import run_contradictions
 from ..agents.reader import run_reader
@@ -100,6 +100,27 @@ def _clip(text: str, n: int = 180) -> str:
     return text[: n - 1].rstrip() + "…"
 
 
+def _chain_note(settings) -> str:
+    n = len(chat_model_chain(settings))
+    if n <= 1:
+        return " Si no responde, reintento el mismo modelo varias veces."
+    return (
+        f" Si no responde, recorro {n - 1} respaldo(s) configurado(s) "
+        "antes de marcar error."
+    )
+
+
+def _bind_retry_log(document_id: str, agent: str):
+    def _notify(failed: str, nxt: str, reason: str) -> None:
+        _log(
+            document_id,
+            agent,
+            f"{failed} no respondió ({reason}); reintento con {nxt}…",
+        )
+
+    return retry_hook.set(_notify)
+
+
 def _save_agent_output(document_id: str, agent: str, output: dict) -> None:
     with SessionLocal() as session:
         session.add(
@@ -128,7 +149,8 @@ async def _node_ingest(state: PipelineState) -> dict:
             document_id,
             "ingest",
             "Re-análisis: reutilizo el texto ya editado y salto la extracción. "
-            "Arranco los tres agentes en paralelo.",
+            "Arranco los tres agentes en paralelo."
+            + _chain_note(settings),
         )
         return {"text": existing_text}
 
@@ -136,9 +158,14 @@ async def _node_ingest(state: PipelineState) -> dict:
     _log(
         document_id,
         "ingest",
-        "Extrayendo la estructura del documento (títulos, párrafos, listas, páginas)…",
+        "Extrayendo la estructura del documento (títulos, párrafos, listas, páginas)…"
+        + _chain_note(settings),
     )
-    html, text, ocr_used = await ingest_file(file_path, file_format, settings)
+    token = _bind_retry_log(document_id, "ingest")
+    try:
+        html, text, ocr_used = await ingest_file(file_path, file_format, settings)
+    finally:
+        retry_hook.reset(token)
 
     with SessionLocal() as session:
         doc = session.get(Document, document_id)
@@ -154,21 +181,27 @@ async def _node_ingest(state: PipelineState) -> dict:
         document_id,
         "ingest",
         f"Estructura lista ({pages or 1} página(s), {len(text):,} caracteres).{ocr_note} "
-        "Arranco lector, contradicciones y referencias en paralelo.",
+        "Arranco lector, contradicciones y referencias en paralelo."
+        + _chain_note(settings),
     )
     return {"text": text}
 
 
 async def _node_reader(state: PipelineState) -> dict:
     document_id = state["document_id"]
+    with SessionLocal() as session:
+        settings = get_settings(session)
     _log(
         document_id,
         "reader",
-        "Leyendo el documento: identifico estructura, resumen e información clave…",
+        "Leyendo el documento: identifico estructura, resumen e información clave…"
+        + _chain_note(settings),
     )
-    with SessionLocal() as session:
-        settings = get_settings(session)
-    output, findings = await run_reader(settings, state["text"])
+    token = _bind_retry_log(document_id, "reader")
+    try:
+        output, findings = await run_reader(settings, state["text"])
+    finally:
+        retry_hook.reset(token)
     _save_agent_output(document_id, "reader", output)
     resumen = _clip(str(output.get("resumen", "")), 160)
     _log(
@@ -181,16 +214,21 @@ async def _node_reader(state: PipelineState) -> dict:
 
 async def _node_contradictions(state: PipelineState) -> dict:
     document_id = state["document_id"]
+    with SessionLocal() as session:
+        settings = get_settings(session)
     _log(
         document_id,
         "contradictions",
-        "Comparando afirmaciones entre secciones para detectar contradicciones e inconsistencias…",
+        "Comparando afirmaciones entre secciones para detectar contradicciones e inconsistencias…"
+        + _chain_note(settings),
     )
-    with SessionLocal() as session:
-        settings = get_settings(session)
-    output, findings = await run_contradictions(
-        settings, state["text"], state.get("reader_output")
-    )
+    token = _bind_retry_log(document_id, "contradictions")
+    try:
+        output, findings = await run_contradictions(
+            settings, state["text"], state.get("reader_output")
+        )
+    finally:
+        retry_hook.reset(token)
     _save_agent_output(document_id, "contradictions", output)
     eval_txt = _clip(str(output.get("evaluacion_general", "")), 140)
     _log(
@@ -203,16 +241,21 @@ async def _node_contradictions(state: PipelineState) -> dict:
 
 async def _node_references(state: PipelineState) -> dict:
     document_id = state["document_id"]
+    with SessionLocal() as session:
+        settings = get_settings(session)
     _log(
         document_id,
         "references",
-        "Extrayendo la bibliografía y verificando cada fuente en Crossref…",
+        "Extrayendo la bibliografía y verificando cada fuente en Crossref…"
+        + _chain_note(settings),
     )
-    with SessionLocal() as session:
-        settings = get_settings(session)
-    output, findings = await run_references(
-        settings, state["text"], state.get("reader_output")
-    )
+    token = _bind_retry_log(document_id, "references")
+    try:
+        output, findings = await run_references(
+            settings, state["text"], state.get("reader_output")
+        )
+    finally:
+        retry_hook.reset(token)
     _save_agent_output(document_id, "references", output)
     xr = output.get("verificacion_crossref") or {}
     _log(
@@ -241,15 +284,23 @@ async def _node_classifier(state: PipelineState) -> dict:
         document_id,
         "classifier",
         "Agregando hallazgos de los tres agentes y calculando el puntaje"
-        + (" (sin llamada extra al modelo)…" if local else "…"),
+        + (
+            " (sin llamada extra al modelo)…"
+            if local
+            else "…" + _chain_note(settings)
+        ),
     )
-    output, score = await run_classifier(
-        settings,
-        state.get("reader_output", {}),
-        state.get("contradictions_output", {}),
-        state.get("references_output", {}),
-        all_findings,
-    )
+    token = _bind_retry_log(document_id, "classifier")
+    try:
+        output, score = await run_classifier(
+            settings,
+            state.get("reader_output", {}),
+            state.get("contradictions_output", {}),
+            state.get("references_output", {}),
+            all_findings,
+        )
+    finally:
+        retry_hook.reset(token)
     _save_agent_output(document_id, "classifier", output)
 
     # Persistir hallazgos (reemplaza los del análisis anterior) y anclarlos al texto

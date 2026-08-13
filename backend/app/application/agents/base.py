@@ -1,7 +1,21 @@
-from ...config import MAX_DOC_HEAD_CHARS, MAX_DOC_MID_CHARS, MAX_DOC_TAIL_CHARS
+import asyncio
+
+from ...config import LLM_CHAIN_ROUNDS, MAX_DOC_HEAD_CHARS, MAX_DOC_MID_CHARS, MAX_DOC_TAIL_CHARS
 from ...domain.entities import AppSettings
 from ...domain.services import VALID_KINDS, VALID_SEVERITIES
-from ...infrastructure.llm import chat_completion, extract_json, chat_model_chain, LLMEmptyResponse, LLMNotConfigured, PUBLIC_READ_ERROR
+from ...infrastructure.llm import (
+    LLMEmptyResponse,
+    LLMNotConfigured,
+    LLMQuotaExceeded,
+    PUBLIC_READ_ERROR,
+    chat_completion,
+    chat_model_chain,
+    describe_llm_error,
+    extract_json,
+    is_free_model,
+    notify_model_retry,
+    retry_target_label,
+)
 
 
 def truncate_doc(text: str) -> str:
@@ -76,23 +90,46 @@ async def call_agent_json(
             "\n\nInstrucciones adicionales del usuario (respétalas siempre):\n"
             + custom_instructions.strip()
         )
-    content = ""
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_prompt},
+    ]
+    chain = chat_model_chain(settings)
     last_exc: Exception | None = None
-    for model in chat_model_chain(settings):
-        try:
-            content = await chat_completion(
-                settings,
-                [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=max_tokens,
-                model=model,
-            )
-            return extract_json(content)
-        except LLMNotConfigured:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            continue
+    rounds = max(1, LLM_CHAIN_ROUNDS)
+    skip_free = False
+    for round_i in range(rounds):
+        if round_i:
+            if skip_free and all(is_free_model(m) for m in chain):
+                break
+            await asyncio.sleep(3.0)
+        for index, model in enumerate(chain):
+            if skip_free and is_free_model(model):
+                continue
+            try:
+                content = await chat_completion(
+                    settings,
+                    messages,
+                    max_tokens=max_tokens,
+                    model=model,
+                    chain_rounds=1,
+                )
+                return extract_json(content)
+            except LLMNotConfigured:
+                raise
+            except LLMQuotaExceeded as exc:
+                last_exc = exc
+                skip_free = True
+                paid = next((m for m in chain[index + 1 :] if not is_free_model(m)), None)
+                if paid:
+                    notify_model_retry(model, paid, describe_llm_error(exc))
+                    continue
+                raise
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                label = retry_target_label(chain, index, round_i, rounds)
+                if label:
+                    notify_model_retry(model, label, describe_llm_error(exc))
+    if isinstance(last_exc, LLMQuotaExceeded):
+        raise last_exc
     raise LLMEmptyResponse(PUBLIC_READ_ERROR) from last_exc
