@@ -293,8 +293,8 @@ export default function WorkspacePage({
           )}
           {doc.status === "error" && (
             <div className="sticky top-0 z-30 border-b border-[#dfa8a0] bg-[#f3d9d5] px-4 py-2 text-xs font-medium text-danger">
-              {doc.error ?? "El análisis falló."} — corrige la configuración y usa
-              «Re-analizar».
+              {doc.error ?? "El servidor no pudo leer los datos."} Usa «Re-analizar»
+              para intentarlo otra vez.
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">

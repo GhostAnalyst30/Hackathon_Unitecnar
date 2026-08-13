@@ -1,19 +1,27 @@
-"""Adaptador LLM: clientes OpenAI-compatibles con pool y respuestas cortas.
+"""Adaptador LLM: clientes OpenAI-compatibles con pool, fallbacks y errores opacos.
 
-Reutiliza el cliente HTTP, limita tokens y reintenta si el proveedor gratuito
-devuelve `choices` vacío (típico en OpenRouter :free saturado).
+Si el modelo principal no responde, se prueban los de respaldo configurados.
+Los fallos técnicos no se exponen al usuario.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 
 from openai import AsyncOpenAI
 
 from ..config import LLM_MAX_TOKENS, LLM_TIMEOUT, PROVIDER_BASE_URLS
 from ..domain.entities import AppSettings
+
+logger = logging.getLogger("llm")
+
+PUBLIC_READ_ERROR = (
+    "El servidor no pudo leer los datos. Inténtalo de nuevo en un momento."
+)
+PUBLIC_CONFIG_ERROR = "Falta configurar el modelo o la API key en Configuración."
 
 
 class LLMNotConfigured(Exception):
@@ -24,7 +32,43 @@ class LLMEmptyResponse(Exception):
     pass
 
 
+def public_error_message(exc: BaseException) -> str:
+    if isinstance(exc, LLMNotConfigured):
+        return PUBLIC_CONFIG_ERROR
+    return PUBLIC_READ_ERROR
+
+
 _clients: dict[tuple[str, str], AsyncOpenAI] = {}
+
+
+def parse_model_list(raw: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[\s,;]+", raw or "") if part.strip()]
+
+
+def _unique_models(*groups: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for group in groups:
+        for model in group:
+            key = model.lower()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(model)
+    return out
+
+
+def chat_model_chain(settings: AppSettings) -> list[str]:
+    return _unique_models(
+        [settings.chat_model.strip()],
+        parse_model_list(getattr(settings, "chat_fallback_models", "") or ""),
+    )
+
+
+def ocr_model_chain(settings: AppSettings) -> list[str]:
+    return _unique_models(
+        [settings.ocr_model.strip()],
+        parse_model_list(getattr(settings, "ocr_fallback_models", "") or ""),
+    )
 
 
 def resolve_chat_config(settings: AppSettings) -> tuple[str, str, str]:
@@ -35,9 +79,7 @@ def resolve_chat_config(settings: AppSettings) -> tuple[str, str, str]:
     api_key = settings.api_key.strip()
     model = settings.chat_model.strip()
     if not base_url or not api_key or not model:
-        raise LLMNotConfigured(
-            "Falta configurar el proveedor LLM (base URL, API key o modelo) en Configuración."
-        )
+        raise LLMNotConfigured(PUBLIC_CONFIG_ERROR)
     return base_url, api_key, model
 
 
@@ -46,9 +88,7 @@ def resolve_ocr_config(settings: AppSettings) -> tuple[str, str, str]:
     api_key = settings.ocr_api_key.strip() or settings.api_key.strip()
     model = settings.ocr_model.strip()
     if not base_url or not api_key or not model:
-        raise LLMNotConfigured(
-            "Falta configurar el OCR (base URL, API key o modelo) en Configuración."
-        )
+        raise LLMNotConfigured(PUBLIC_CONFIG_ERROR)
     return base_url, api_key, model
 
 
@@ -97,60 +137,93 @@ def _openrouter_extras(settings: AppSettings) -> dict:
     return {"extra_body": {"provider": {"sort": "throughput"}}}
 
 
-async def chat_completion(
+async def _complete_once(
+    client: AsyncOpenAI,
     settings: AppSettings,
+    model: str,
     messages: list[dict],
-    temperature: float = 0.1,
-    max_tokens: int = LLM_MAX_TOKENS,
+    temperature: float,
+    max_tokens: int,
 ) -> str:
-    base_url, api_key, model = resolve_chat_config(settings)
-    client = make_client(base_url, api_key)
-    last_error = "respuesta vacía"
+    last_error = "sin contenido"
     for attempt in range(2):
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **_openrouter_extras(settings),
-        )
+        try:
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **_openrouter_extras(settings),
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = type(exc).__name__
+            logger.warning("Modelo %s falló (%s): %s", model, last_error, exc)
+            await asyncio.sleep(0.5 * (attempt + 1))
+            continue
         choices = getattr(resp, "choices", None) or []
         if choices:
             text = _message_text(choices[0].message)
             if text.strip():
                 return text
-        err = getattr(resp, "error", None)
-        last_error = str(err) if err else "choices vacío"
-        await asyncio.sleep(0.6 * (attempt + 1))
-    raise LLMEmptyResponse(
-        "El modelo no devolvió contenido "
-        f"({last_error}). En el cupo gratuito suele pasar con modelos enormes; "
-        "prueba Gemma 4 26B :free (más rápido) o reintenta."
-    )
+        last_error = "respuesta vacía"
+        await asyncio.sleep(0.5 * (attempt + 1))
+    raise LLMEmptyResponse(last_error)
+
+
+async def chat_completion(
+    settings: AppSettings,
+    messages: list[dict],
+    temperature: float = 0.1,
+    max_tokens: int = LLM_MAX_TOKENS,
+    model: str | None = None,
+) -> str:
+    base_url, api_key, primary = resolve_chat_config(settings)
+    client = make_client(base_url, api_key)
+    chain = [model] if model else chat_model_chain(settings)
+    last_exc: Exception | None = None
+    for index, candidate in enumerate(chain):
+        try:
+            text = await _complete_once(
+                client, settings, candidate, messages, temperature, max_tokens
+            )
+            if index:
+                logger.info("Usando modelo de respaldo %s", candidate)
+            return text
+        except LLMNotConfigured:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            logger.warning("No se pudo usar %s, paso al siguiente.", candidate)
+    raise LLMEmptyResponse(PUBLIC_READ_ERROR) from last_exc
 
 
 async def ocr_image(settings: AppSettings, image_data_url: str, prompt: str) -> str:
-    base_url, api_key, model = resolve_ocr_config(settings)
+    base_url, api_key, _primary = resolve_ocr_config(settings)
     client = make_client(base_url, api_key)
-    resp = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
-            }
-        ],
-        temperature=0,
-        max_tokens=LLM_MAX_TOKENS,
-        **_openrouter_extras(settings),
-    )
-    choices = getattr(resp, "choices", None) or []
-    if not choices:
-        raise LLMEmptyResponse("El modelo OCR no devolvió contenido.")
-    return _message_text(choices[0].message) or ""
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ],
+        }
+    ]
+    last_exc: Exception | None = None
+    for index, candidate in enumerate(ocr_model_chain(settings)):
+        try:
+            text = await _complete_once(
+                client, settings, candidate, messages, 0, LLM_MAX_TOKENS
+            )
+            if index:
+                logger.info("OCR usando modelo de respaldo %s", candidate)
+            return text
+        except LLMNotConfigured:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            logger.warning("OCR no pudo usar %s, paso al siguiente.", candidate)
+    raise LLMEmptyResponse(PUBLIC_READ_ERROR) from last_exc
 
 
 def extract_json(text: str) -> dict:
@@ -165,7 +238,7 @@ def extract_json(text: str) -> dict:
         pass
     start = text.find("{")
     if start == -1:
-        raise ValueError(f"El modelo no devolvió JSON: {text[:300]}")
+        raise ValueError("respuesta no estructurada")
     depth = 0
     for i in range(start, len(text)):
         if text[i] == "{":
@@ -175,4 +248,4 @@ def extract_json(text: str) -> dict:
             if depth == 0:
                 candidate = text[start : i + 1]
                 return json.loads(candidate)
-    raise ValueError(f"JSON incompleto en la respuesta del modelo: {text[:300]}")
+    raise ValueError("respuesta incompleta")

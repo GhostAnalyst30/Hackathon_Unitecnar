@@ -65,7 +65,11 @@ export function ChatPanel({
         {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: `⚠ ${err instanceof Error ? err.message : "Error al contactar el modelo"}`,
+          content: `⚠ ${
+            err instanceof Error && /configur/i.test(err.message)
+              ? err.message
+              : "El servidor no pudo leer la respuesta. Inténtalo de nuevo."
+          }`,
           suggestions: [],
         },
       ]);

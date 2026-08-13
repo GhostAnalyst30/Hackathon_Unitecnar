@@ -27,6 +27,7 @@ from ...domain.services import anchor_findings
 from ...infrastructure.db import SessionLocal
 from ...infrastructure.events import publish_document_event
 from ...infrastructure.ingest import ingest_file
+from ...infrastructure.llm import public_error_message
 from ..agents.classifier import run_classifier
 from ..agents.contradictions import run_contradictions
 from ..agents.reader import run_reader
@@ -340,8 +341,9 @@ async def _run_pipeline(document_id: str, skip_ingest: bool) -> None:
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("Pipeline falló para %s:\n%s", document_id, traceback.format_exc())
-            _log(document_id, "ingest", f"El pipeline falló: {exc}")
-            _set_status(document_id, "error", error=str(exc))
+            friendly = public_error_message(exc)
+            _log(document_id, "ingest", friendly)
+            _set_status(document_id, "error", error=friendly)
 
 
 def enqueue_analysis(document_id: str, skip_ingest: bool = False) -> None:

@@ -12,7 +12,7 @@ from ...application.use_cases import chat as chat_uc
 from ...application.use_cases import documents as documents_uc
 from ...application.use_cases.documents import DocumentNotFound, InvalidOperation
 from ...infrastructure.db import get_session
-from ...infrastructure.llm import LLMNotConfigured
+from ...infrastructure.llm import LLMNotConfigured, public_error_message
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -23,8 +23,8 @@ def _handle(exc: Exception) -> HTTPException:
     if isinstance(exc, (InvalidOperation, ValueError)):
         return HTTPException(400, str(exc))
     if isinstance(exc, LLMNotConfigured):
-        return HTTPException(400, str(exc))
-    return HTTPException(500, str(exc))
+        return HTTPException(400, public_error_message(exc))
+    return HTTPException(500, public_error_message(exc))
 
 
 @router.post("", response_model=list[dtos.DocumentSummaryDTO])
@@ -109,7 +109,7 @@ async def chat(
     except (DocumentNotFound, LLMNotConfigured) as exc:
         raise _handle(exc) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"Error del modelo: {exc}") from exc
+        raise HTTPException(502, public_error_message(exc)) from exc
 
 
 @router.get("/{document_id}/export")

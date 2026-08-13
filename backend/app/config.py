@@ -31,6 +31,8 @@ DEFAULT_PROVIDER = "openrouter"
 DEFAULT_CHAT_MODEL = "google/gemma-4-26b-a4b-it:free"
 DEFAULT_OCR_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OCR_MODEL = "google/gemma-4-26b-a4b-it:free"
+DEFAULT_CHAT_FALLBACKS = "google/gemma-4-31b-it:free,openrouter/free"
+DEFAULT_OCR_FALLBACKS = "google/gemma-4-31b-it:free,openrouter/free"
 
 # Contacto para el "polite pool" de la Crossref REST API (sin API key)
 CROSSREF_MAILTO = "ghostanalyst@localhost.dev"

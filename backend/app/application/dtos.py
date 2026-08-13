@@ -108,9 +108,11 @@ class SettingsDTO(BaseModel):
     api_key: str
     base_url: str
     chat_model: str
+    chat_fallback_models: str
     ocr_api_key: str
     ocr_base_url: str
     ocr_model: str
+    ocr_fallback_models: str
     reader_instructions: str
     contradictions_instructions: str
     references_instructions: str
@@ -123,9 +125,11 @@ class SettingsUpdateDTO(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     chat_model: str | None = None
+    chat_fallback_models: str | None = None
     ocr_api_key: str | None = None
     ocr_base_url: str | None = None
     ocr_model: str | None = None
+    ocr_fallback_models: str | None = None
     reader_instructions: str | None = None
     contradictions_instructions: str | None = None
     references_instructions: str | None = None

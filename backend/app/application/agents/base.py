@@ -1,7 +1,7 @@
 from ...config import MAX_DOC_HEAD_CHARS, MAX_DOC_MID_CHARS, MAX_DOC_TAIL_CHARS
 from ...domain.entities import AppSettings
 from ...domain.services import VALID_KINDS, VALID_SEVERITIES
-from ...infrastructure.llm import chat_completion, extract_json
+from ...infrastructure.llm import chat_completion, extract_json, chat_model_chain, LLMEmptyResponse, LLMNotConfigured, PUBLIC_READ_ERROR
 
 
 def truncate_doc(text: str) -> str:
@@ -76,12 +76,23 @@ async def call_agent_json(
             "\n\nInstrucciones adicionales del usuario (respétalas siempre):\n"
             + custom_instructions.strip()
         )
-    content = await chat_completion(
-        settings,
-        [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=max_tokens,
-    )
-    return extract_json(content)
+    content = ""
+    last_exc: Exception | None = None
+    for model in chat_model_chain(settings):
+        try:
+            content = await chat_completion(
+                settings,
+                [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=max_tokens,
+                model=model,
+            )
+            return extract_json(content)
+        except LLMNotConfigured:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            continue
+    raise LLMEmptyResponse(PUBLIC_READ_ERROR) from last_exc

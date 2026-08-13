@@ -266,6 +266,18 @@ export default function SettingsPage() {
                   if (next === "openrouter") {
                     set("ocr_base_url", "https://openrouter.ai/api/v1");
                     set("ocr_model", "google/gemma-4-26b-a4b-it:free");
+                    if (!(settings.chat_fallback_models ?? "").trim()) {
+                      set(
+                        "chat_fallback_models",
+                        "google/gemma-4-31b-it:free\nopenrouter/free",
+                      );
+                    }
+                    if (!(settings.ocr_fallback_models ?? "").trim()) {
+                      set(
+                        "ocr_fallback_models",
+                        "google/gemma-4-31b-it:free\nopenrouter/free",
+                      );
+                    }
                   }
                 }}
                 className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-accent"
@@ -313,6 +325,44 @@ export default function SettingsPage() {
               />
             </label>
           </div>
+
+          <label className="mt-4 block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft">
+              Modelos de respaldo
+            </span>
+            <p className="mb-1.5 text-xs text-ink-faint">
+              Si el modelo principal no responde, se prueban estos en orden (uno por línea).
+            </p>
+            <textarea
+              value={settings.chat_fallback_models ?? ""}
+              onChange={(e) => set("chat_fallback_models", e.target.value)}
+              rows={3}
+              placeholder={"google/gemma-4-31b-it:free\nopenrouter/free"}
+              className="w-full resize-y rounded-md border border-line bg-paper px-3 py-2 font-mono text-xs outline-none placeholder:text-ink-faint focus:border-accent"
+            />
+            {(CHAT_PRESETS[settings.provider] ?? []).length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {CHAT_PRESETS[settings.provider]
+                  .filter((p) => p.model !== settings.chat_model)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        const parts = (settings.chat_fallback_models ?? "")
+                          .split(/[\s,;]+/)
+                          .filter(Boolean);
+                        if (parts.includes(p.model)) return;
+                        set("chat_fallback_models", [...parts, p.model].join("\n"));
+                      }}
+                      className="rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-soft hover:border-accent hover:text-accent"
+                    >
+                      + {p.label.replace(/^Gratis · (rápido · )?/, "").replace(/^De pago · /, "")}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </label>
 
           {settings.provider === "custom" && (
             <label className="mt-4 block">
@@ -421,6 +471,40 @@ export default function SettingsPage() {
               />
             </label>
           </div>
+
+          <label className="mt-4 block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft">
+              Modelos OCR de respaldo
+            </span>
+            <p className="mb-1.5 text-xs text-ink-faint">
+              Si el OCR principal falla, se prueban estos en orden.
+            </p>
+            <textarea
+              value={settings.ocr_fallback_models ?? ""}
+              onChange={(e) => set("ocr_fallback_models", e.target.value)}
+              rows={3}
+              placeholder={"google/gemma-4-31b-it:free\nopenrouter/free"}
+              className="w-full resize-y rounded-md border border-line bg-paper px-3 py-2 font-mono text-xs outline-none placeholder:text-ink-faint focus:border-accent"
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {OCR_PRESETS.filter((p) => p.model !== settings.ocr_model).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    const parts = (settings.ocr_fallback_models ?? "")
+                      .split(/[\s,;]+/)
+                      .filter(Boolean);
+                    if (parts.includes(p.model)) return;
+                    set("ocr_fallback_models", [...parts, p.model].join("\n"));
+                  }}
+                  className="rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-soft hover:border-accent hover:text-accent"
+                >
+                  + {p.label.replace(/^Gratis · (rápido · )?OpenRouter · /, "").replace(/^Gratis · OpenRouter · /, "").replace(/^De pago · .+ · /, "")}
+                </button>
+              ))}
+            </div>
+          </label>
 
           <label className="mt-4 block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft">

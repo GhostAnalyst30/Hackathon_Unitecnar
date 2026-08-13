@@ -3,8 +3,10 @@
 from sqlalchemy.orm import Session
 
 from ...config import (
+    DEFAULT_CHAT_FALLBACKS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_OCR_BASE_URL,
+    DEFAULT_OCR_FALLBACKS,
     DEFAULT_OCR_MODEL,
     DEFAULT_PROVIDER,
 )
@@ -13,6 +15,7 @@ from ...infrastructure.llm import (
     LLMNotConfigured,
     chat_completion,
     ocr_image,
+    public_error_message,
     resolve_chat_config,
     resolve_ocr_config,
 )
@@ -41,6 +44,12 @@ def get_settings(session: Session) -> AppSettings:
         settings.ocr_base_url = DEFAULT_OCR_BASE_URL
         settings.ocr_model = DEFAULT_OCR_MODEL
         session.commit()
+    if not (getattr(settings, "chat_fallback_models", "") or "").strip():
+        settings.chat_fallback_models = DEFAULT_CHAT_FALLBACKS
+        session.commit()
+    if not (getattr(settings, "ocr_fallback_models", "") or "").strip():
+        settings.ocr_fallback_models = DEFAULT_OCR_FALLBACKS
+        session.commit()
     return settings
 
 
@@ -67,6 +76,9 @@ async def test_connection(session: Session, target: str) -> TestConnectionRespon
         )
         return TestConnectionResponseDTO(ok=True, detail="Conexión exitosa", data=reply[:100])
     except LLMNotConfigured as exc:
-        return TestConnectionResponseDTO(ok=False, detail=str(exc))
-    except Exception as exc:  # noqa: BLE001
-        return TestConnectionResponseDTO(ok=False, detail=f"Error de conexión: {exc}")
+        return TestConnectionResponseDTO(ok=False, detail=public_error_message(exc))
+    except Exception:  # noqa: BLE001
+        return TestConnectionResponseDTO(
+            ok=False,
+            detail="No se pudo conectar. Revisa la API key o los modelos de respaldo.",
+        )

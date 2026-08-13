@@ -96,9 +96,11 @@ export interface Settings {
   api_key: string;
   base_url: string;
   chat_model: string;
+  chat_fallback_models: string;
   ocr_api_key: string;
   ocr_base_url: string;
   ocr_model: string;
+  ocr_fallback_models: string;
   reader_instructions: string;
   contradictions_instructions: string;
   references_instructions: string;
