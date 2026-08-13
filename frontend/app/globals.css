@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+:root {
+  /* Manuscrito editorial: papel cálido, tinta profunda, acento oxblood */
+  --paper: #f6f2ea;
+  --paper-raised: #fdfbf6;
+  --paper-sunken: #ede7da;
+  --ink: #221d15;
+  --ink-soft: #6f6555;
+  --ink-faint: #a2957f;
+  --line: #ddd3c0;
+  --line-strong: #c4b79d;
+  --accent: #7c2d12;
+  --accent-strong: #5d1f0a;
+  --ok: #2f6b3a;
+  --warn: #a16207;
+  --danger: #b3261e;
+
+  /* Colores de resaltado por tipo de hallazgo */
+  --hl-importante: #cfe3f7;
+  --hl-importante-border: #6b9fd0;
+  --hl-alerta: #fbe6a8;
+  --hl-alerta-border: #cb9b28;
+  --hl-contradiccion: #f6c8c2;
+  --hl-contradiccion-border: #c9564a;
+  --hl-inconsistencia: #f7d8b8;
+  --hl-inconsistencia-border: #cf8636;
+  --hl-referencia: #ddd3f2;
+  --hl-referencia-border: #8b6fc4;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-sunken: var(--paper-sunken);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-plex), sans-serif;
+  --font-display: var(--font-fraunces), serif;
+  --font-serif: var(--font-source-serif), serif;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgba(124, 45, 18, 0.05), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgba(47, 107, 58, 0.04), transparent 55%),
+    var(--paper);
+  color: var(--ink);
+  font-family: var(--font-plex), sans-serif;
+  min-height: 100%;
+}
+
+/* Textura de grano sutil sobre todo el fondo */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.03 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: rgba(124, 45, 18, 0.18);
+}
+
+/* ---------- Resaltados de hallazgos en el editor ---------- */
+.hl {
+  border-radius: 2px;
+  padding: 0.05em 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: help;
+  transition: filter 0.15s ease;
+}
+.hl:hover {
+  filter: brightness(0.93);
+}
+.hl-importante {
+  background: var(--hl-importante);
+  border-bottom: 2px solid var(--hl-importante-border);
+}
+.hl-alerta {
+  background: var(--hl-alerta);
+  border-bottom: 2px solid var(--hl-alerta-border);
+}
+.hl-contradiccion {
+  background: var(--hl-contradiccion);
+  border-bottom: 2px solid var(--hl-contradiccion-border);
+}
+.hl-inconsistencia {
+  background: var(--hl-inconsistencia);
+  border-bottom: 2px solid var(--hl-inconsistencia-border);
+}
+.hl-referencia {
+  background: var(--hl-referencia);
+  border-bottom: 2px solid var(--hl-referencia-border);
+}
+.hl-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  animation: hl-flash 1.2s ease;
+}
+@keyframes hl-flash {
+  0%, 60% {
+    outline-color: var(--accent);
+  }
+  100% {
+    outline-color: transparent;
+  }
+}
+
+/* ---------- Contenido del editor (manuscrito) ---------- */
+.manuscript .tiptap {
+  outline: none;
+  font-family: var(--font-source-serif), serif;
+  font-size: 1.02rem;
+  line-height: 1.75;
+  color: var(--ink);
+}
+.manuscript .tiptap > * + * {
+  margin-top: 0.85em;
+}
+.manuscript .tiptap h1,
+.manuscript .tiptap h2,
+.manuscript .tiptap h3 {
+  font-family: var(--font-fraunces), serif;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 1.4em;
+}
+.manuscript .tiptap h1 {
+  font-size: 1.7rem;
+}
+.manuscript .tiptap h2 {
+  font-size: 1.35rem;
+}
+.manuscript .tiptap h3 {
+  font-size: 1.15rem;
+}
+.manuscript .tiptap ul,
+.manuscript .tiptap ol {
+  padding-left: 1.4em;
+}
+.manuscript .tiptap ul {
+  list-style: disc;
+}
+.manuscript .tiptap ol {
+  list-style: decimal;
+}
+.manuscript .tiptap blockquote {
+  border-left: 3px solid var(--line-strong);
+  padding-left: 1em;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.manuscript .tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.manuscript .tiptap td,
+.manuscript .tiptap th {
+  border: 1px solid var(--line);
+  padding: 0.3em 0.6em;
+}
+.manuscript .tiptap a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ---------- Animaciones de entrada ---------- */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+/* ---------- Scrollbars discretos ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
