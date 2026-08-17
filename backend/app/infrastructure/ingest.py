@@ -19,7 +19,8 @@ import markdown as md_lib
 from bs4 import BeautifulSoup
 
 from ..domain.entities import AppSettings
-from .llm import ocr_image
+from .llm import LLMNotConfigured, ocr_image
+from .rapid_ocr import pixmap_to_numpy, run_ocr
 
 OCR_PROMPT = (
     "Extrae todo el texto del documento de la imagen en formato Markdown, "
@@ -30,6 +31,7 @@ OCR_PROMPT = (
 MIN_CHARS_PER_PAGE = 40
 # page.find_tables() es muy lento y pide pymupdf_layout; se omite por velocidad.
 EXTRACT_PDF_TABLES = False
+MAX_FIGURES_PER_PAGE = 6
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
 # Encabezados típicos de papers, aunque el tamaño de fuente no destaque
@@ -44,6 +46,10 @@ _SECTION_RE = re.compile(
 )
 _NUMBERED_SECTION_RE = re.compile(r"^(\d+(?:\.\d+){0,3})[\.\)]?\s+\S")
 _LIST_RE = re.compile(r"^(?:[\u2022\u2023\u25E6•·\-–—]|\d+[\.\)])\s+")
+_CAPTION_RE = re.compile(
+    r"^(?:fig(?:ure|\.)?|figura|gr[aá]fico(?:s)?|chart|plot|diagrama)\b",
+    re.I,
+)
 
 
 def detect_format(filename: str) -> str:
@@ -101,6 +107,171 @@ def _wrap_lists(tags: list[str]) -> list[str]:
     if in_ul:
         out.append("</ul>")
     return out
+
+
+def _ocr_line_tag(text: str) -> str:
+    if _CAPTION_RE.match(text) and len(text) < 240:
+        return f"<p><em>{_escape(text)}</em></p>"
+    if _SECTION_RE.match(text.rstrip(":")) or (
+        _NUMBERED_SECTION_RE.match(text) and len(text) < 140
+    ):
+        return f"<h2>{_escape(text)}</h2>"
+    if text.isupper() and 3 < len(text) < 80:
+        return f"<h3>{_escape(text)}</h3>"
+    if _LIST_RE.match(text):
+        return f"<li>{_escape(_LIST_RE.sub('', text))}</li>"
+    return f"<p>{_escape(text)}</p>"
+
+
+def _ocr_items_to_html(items: list[dict]) -> str:
+    """Agrupa cajas RapidOCR en líneas y párrafos HTML."""
+    if not items:
+        return ""
+    heights = [max(it["y1"] - it["y0"], 1.0) for it in items]
+    med_h = median(heights)
+    line_tol = max(med_h * 0.65, 6.0)
+    para_gap = med_h * 1.5
+    ordered = sorted(items, key=lambda it: (it["y0"], it["x0"]))
+    lines: list[list[dict]] = []
+    for it in ordered:
+        if lines:
+            prev = lines[-1]
+            avg_y = sum(p["y0"] for p in prev) / len(prev)
+            if abs(it["y0"] - avg_y) <= line_tol:
+                prev.append(it)
+                continue
+        lines.append([it])
+    line_rows: list[tuple[float, str]] = []
+    for line in lines:
+        line.sort(key=lambda it: it["x0"])
+        text = re.sub(r"[ \t]+", " ", " ".join(it["text"] for it in line)).strip()
+        if text:
+            line_rows.append((sum(it["y0"] for it in line) / len(line), text))
+    tags: list[str] = []
+    para: list[str] = []
+    prev_y: float | None = None
+
+    def flush_para() -> None:
+        joined = _join_lines(para)
+        para.clear()
+        if joined:
+            tags.append(_ocr_line_tag(joined))
+
+    for y, text in line_rows:
+        standalone = bool(
+            _CAPTION_RE.match(text)
+            or _SECTION_RE.match(text.rstrip(":"))
+            or _LIST_RE.match(text)
+            or (_NUMBERED_SECTION_RE.match(text) and len(text) < 140)
+        )
+        if para and (standalone or (prev_y is not None and y - prev_y > para_gap)):
+            flush_para()
+        if standalone:
+            tags.append(_ocr_line_tag(text))
+        else:
+            para.append(text)
+        prev_y = y
+    flush_para()
+    return "\n".join(_wrap_lists(tags))
+
+
+def _figure_html(caption: str, labels: list[str]) -> str:
+    parts: list[str] = []
+    if caption:
+        parts.append(f"<p><em>{_escape(caption)}</em></p>")
+    else:
+        parts.append("<p><em>Figura o gráfica detectada en el original.</em></p>")
+    if labels:
+        shown = " · ".join(labels[:28])
+        parts.append(f"<p>Texto leído en la gráfica: {_escape(shown)}</p>")
+    elif not caption:
+        parts[0] = (
+            "<p><em>Figura o gráfica detectada en el original "
+            "(sin texto legible en ejes o leyenda). Revisa el archivo original.</em></p>"
+        )
+    return "\n".join(parts)
+
+
+def _ocr_figure_html(
+    page: fitz.Page, bbox: tuple[float, float, float, float], caption: str
+) -> str:
+    pix = page.get_pixmap(
+        clip=fitz.Rect(bbox), matrix=fitz.Matrix(2, 2), colorspace=fitz.csRGB
+    )
+    items = run_ocr(pixmap_to_numpy(pix))
+    labels: list[str] = []
+    cap = caption
+    for it in items:
+        text = it["text"]
+        if not cap and _CAPTION_RE.match(text):
+            cap = text
+            continue
+        if _CAPTION_RE.match(text):
+            continue
+        labels.append(text)
+    return _figure_html(cap, labels)
+
+
+def _block_plain(block: dict) -> str:
+    lines: list[str] = []
+    for line in block.get("lines", []):
+        raw = "".join(span.get("text", "") for span in line.get("spans", [])).strip()
+        if raw:
+            lines.append(raw)
+    return _join_lines(lines)
+
+
+def _caption_for_image(
+    text_blocks: list[dict], bbox: tuple[float, float, float, float]
+) -> tuple[str, tuple[float, float, float, float] | None]:
+    y1 = bbox[3]
+    best = ""
+    best_bbox: tuple[float, float, float, float] | None = None
+    best_d = 56.0
+    for block in text_blocks:
+        tb = tuple(block["bbox"])
+        gap = tb[1] - y1
+        if gap < -8 or gap > 56:
+            continue
+        if tb[2] < bbox[0] - 24 or tb[0] > bbox[2] + 24:
+            continue
+        text = _block_plain(block)
+        if not text or not _CAPTION_RE.match(text):
+            continue
+        if gap < best_d:
+            best_d = gap
+            best = text
+            best_bbox = tb  # type: ignore[assignment]
+    return best, best_bbox
+
+
+def _collect_figures(
+    page: fitz.Page, data: dict, text_blocks: list[dict]
+) -> tuple[list[tuple[tuple[float, float, float, float], str]], set[tuple]]:
+    pw = page.rect.width or 1.0
+    ph = page.rect.height or 1.0
+    figures: list[tuple[tuple[float, float, float, float], str]] = []
+    skip: set[tuple] = set()
+    for block in data.get("blocks", []):
+        if len(figures) >= MAX_FIGURES_PER_PAGE:
+            break
+        if block.get("type") != 1:
+            continue
+        bbox = tuple(block["bbox"])
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if width < pw * 0.22 or height < ph * 0.10:
+            continue
+        if bbox[1] < ph * 0.04 and height < ph * 0.12:
+            continue
+        caption, cap_bbox = _caption_for_image(text_blocks, bbox)
+        if cap_bbox:
+            skip.add(cap_bbox)
+        try:
+            figures.append((bbox, _ocr_figure_html(page, bbox, caption)))
+        except Exception:  # noqa: BLE001
+            figures.append((bbox, _figure_html(caption, [])))
+    return figures, skip
 
 
 def _overlaps(a: tuple[float, float, float, float], b: tuple[float, ...], pad: float = 2.0) -> bool:
@@ -186,8 +357,11 @@ def _pdf_page_to_html(page: fitz.Page, page_number: int) -> str:
 
     # find_tables() es muy lento sin pymupdf_layout; se omite a propósito.
     tables = _extract_tables(page) if EXTRACT_PDF_TABLES else []
+    figures, skip_captions = _collect_figures(page, data, text_blocks)
+    floaters = list(tables) + list(figures)
     table_rects = [t[0] for t in tables]
-    used_tables: set[int] = set()
+    figure_rects = [f[0] for f in figures]
+    used_floaters: set[int] = set()
 
     tags: list[str] = [
         "<hr>",
@@ -195,16 +369,20 @@ def _pdf_page_to_html(page: fitz.Page, page_number: int) -> str:
     ]
 
     def flush_table_before(y: float) -> None:
-        for i, (bbox, html) in enumerate(tables):
-            if i in used_tables:
+        for i, (bbox, html) in enumerate(floaters):
+            if i in used_floaters:
                 continue
             if bbox[1] <= y:
                 tags.append(html)
-                used_tables.add(i)
+                used_floaters.add(i)
 
     for block in text_blocks:
         bbox = tuple(block["bbox"])
+        if bbox in skip_captions:
+            continue
         if any(_overlaps(bbox, r) for r in table_rects):
+            continue
+        if any(_overlaps(bbox, r, pad=4.0) for r in figure_rects):
             continue
 
         flush_table_before(bbox[1])
@@ -226,7 +404,9 @@ def _pdf_page_to_html(page: fitz.Page, page_number: int) -> str:
             continue
 
         level = _heading_level(text, max_size, body, bold)
-        if level:
+        if _CAPTION_RE.match(text) and len(text) < 240:
+            tags.append(f"<p><em>{_escape(text)}</em></p>")
+        elif level:
             tags.append(f"<h{level}>{_escape(text)}</h{level}>")
         elif _LIST_RE.match(text):
             item = _LIST_RE.sub("", text)
@@ -234,8 +414,8 @@ def _pdf_page_to_html(page: fitz.Page, page_number: int) -> str:
         else:
             tags.append(f"<p>{_escape(text)}</p>")
 
-    for i, (_, html) in enumerate(tables):
-        if i not in used_tables:
+    for i, (_, html) in enumerate(floaters):
+        if i not in used_floaters:
             tags.append(html)
 
     return "\n".join(_wrap_lists(tags))
@@ -255,8 +435,34 @@ def _image_file_data_url(path: Path) -> str:
     return f"data:image/{mime};base64,{b64}"
 
 
+async def _vision_ocr_html(settings: AppSettings, data_url: str) -> str:
+    try:
+        md_text = await ocr_image(settings, data_url, OCR_PROMPT)
+    except LLMNotConfigured:
+        return ""
+    except Exception:  # noqa: BLE001
+        return ""
+    return _markdown_to_html(md_text or "")
+
+
+def _rapid_page_html(page: fitz.Page) -> str:
+    try:
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), colorspace=fitz.csRGB)
+        return _ocr_items_to_html(run_ocr(pixmap_to_numpy(pix)))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _empty_scan_note() -> str:
+    return (
+        "<p><em>Página o imagen sin texto legible "
+        "(posible gráfica, foto o escaneo de baja calidad). "
+        "Revisa el archivo original.</em></p>"
+    )
+
+
 async def _ingest_pdf(path: Path, settings: AppSettings) -> tuple[str, bool]:
-    """Devuelve (html, ocr_usado). Estructura nativa; OCR solo en páginas escaneadas."""
+    """Devuelve (html, ocr_usado). Estructura nativa; OCR local solo en páginas escaneadas."""
     doc = fitz.open(path)
     try:
         html_parts: list[str] = []
@@ -264,11 +470,14 @@ async def _ingest_pdf(path: Path, settings: AppSettings) -> tuple[str, bool]:
         for index, page in enumerate(doc, start=1):
             text = page.get_text("text").strip()
             if len(text) >= MIN_CHARS_PER_PAGE:
-                html_parts.append(_pdf_page_to_html(page, index))
+                html_parts.append(await asyncio.to_thread(_pdf_page_to_html, page, index))
             else:
-                data_url = await asyncio.to_thread(_pixmap_data_url, page)
-                md_text = await ocr_image(settings, data_url, OCR_PROMPT)
-                page_html = _markdown_to_html(md_text)
+                page_html = await asyncio.to_thread(_rapid_page_html, page)
+                if not html_to_text(page_html).strip():
+                    data_url = await asyncio.to_thread(_pixmap_data_url, page)
+                    page_html = await _vision_ocr_html(settings, data_url)
+                if not html_to_text(page_html).strip():
+                    page_html = _empty_scan_note()
                 html_parts.append(
                     f"<hr>\n<p><em>— Página {index} —</em></p>\n{page_html}"
                 )
@@ -285,9 +494,26 @@ def _ingest_docx(path: Path) -> str:
 
 
 async def _ingest_image(path: Path, settings: AppSettings) -> str:
+    def _local() -> str:
+        doc = fitz.open(path)
+        try:
+            parts: list[str] = []
+            for i, page in enumerate(doc, start=1):
+                html = _rapid_page_html(page)
+                if doc.page_count > 1:
+                    parts.append(f"<hr>\n<p><em>— Página {i} —</em></p>\n{html}")
+                else:
+                    parts.append(html)
+            return "\n".join(parts)
+        finally:
+            doc.close()
+
+    html = await asyncio.to_thread(_local)
+    if html_to_text(html).strip():
+        return html
     data_url = await asyncio.to_thread(_image_file_data_url, path)
-    md_text = await ocr_image(settings, data_url, OCR_PROMPT)
-    return _markdown_to_html(md_text)
+    fallback = await _vision_ocr_html(settings, data_url)
+    return fallback if html_to_text(fallback).strip() else _empty_scan_note()
 
 
 async def ingest_file(

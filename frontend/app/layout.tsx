@@ -31,10 +31,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="es"
-      className={`${fraunces.variable} ${plexSans.variable} ${sourceSerif.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${plexSans.variable} ${sourceSerif.variable} h-full overflow-hidden antialiased`}
     >
-      <body className="relative z-10 flex min-h-full flex-col">
-        <header className="sticky top-0 z-40 border-b border-line bg-paper/85 backdrop-blur">
+      <body className="relative z-10 flex h-full flex-col overflow-hidden">
+        <header className="z-40 h-14 shrink-0 border-b border-line bg-paper/85 backdrop-blur">
           <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-5">
             <Link href="/" className="group flex items-baseline gap-2">
               <span className="font-display text-xl font-semibold tracking-tight text-ink">
@@ -60,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </div>
         </header>
-        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</main>
       </body>
     </html>
   );

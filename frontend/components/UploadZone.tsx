@@ -75,7 +75,7 @@ export function UploadZone({
             {uploading ? "Subiendo y encolando…" : "Arrastra tus papers aquí"}
           </p>
           <p className="mt-1 text-sm text-ink-soft">
-            PDF, DOCX o imagen (escaneos con Qianfan-OCR) · también puedes hacer clic
+            PDF, DOCX o imagen (escaneos con RapidOCR local) · también puedes hacer clic
           </p>
         </div>
       </div>

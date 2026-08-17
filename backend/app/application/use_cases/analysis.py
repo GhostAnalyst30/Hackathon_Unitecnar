@@ -27,7 +27,15 @@ from ...domain.services import anchor_findings
 from ...infrastructure.db import SessionLocal
 from ...infrastructure.events import publish_document_event
 from ...infrastructure.ingest import ingest_file
-from ...infrastructure.llm import chat_model_chain, public_error_message, retry_hook
+from ...infrastructure.pdf_rects import anchor_pdf_rects
+from ...infrastructure.llm import (
+    LLMEmptyResponse,
+    LLMNotConfigured,
+    LLMQuotaExceeded,
+    chat_model_chain,
+    public_error_message,
+    retry_hook,
+)
 from ..agents.classifier import run_classifier
 from ..agents.contradictions import run_contradictions
 from ..agents.reader import run_reader
@@ -175,7 +183,7 @@ async def _node_ingest(state: PipelineState) -> dict:
         session.commit()
 
     pages = html.count("— Página ")
-    ocr_note = " Se usó OCR en páginas escaneadas." if ocr_used else ""
+    ocr_note = " Se usó OCR local (RapidOCR) en páginas escaneadas." if ocr_used else ""
     _set_status(document_id, "analyzing")
     _log(
         document_id,
@@ -254,6 +262,28 @@ async def _node_references(state: PipelineState) -> dict:
         output, findings = await run_references(
             settings, state["text"], state.get("reader_output")
         )
+    except (LLMNotConfigured, LLMQuotaExceeded):
+        raise
+    except LLMEmptyResponse:
+        logger.warning("Referencias sin JSON válido; el pipeline continúa")
+        _log(
+            document_id,
+            "references",
+            "La bibliografía llegó incompleta del modelo. Sigo con el resto del análisis.",
+        )
+        output, findings = (
+            {
+                "analisis": "No se pudo extraer la bibliografía en esta pasada.",
+                "referencias": [],
+                "hallazgos": [],
+                "verificacion_crossref": {
+                    "total": 0,
+                    "verificadas": 0,
+                    "no_encontradas": 0,
+                },
+            },
+            [],
+        )
     finally:
         retry_hook.reset(token)
     _save_agent_output(document_id, "references", output)
@@ -322,6 +352,11 @@ async def _node_classifier(state: PipelineState) -> dict:
             for f in all_findings
         ]
         anchor_findings(doc.content_text, finding_rows)
+        if doc.file_format == "pdf":
+            try:
+                anchor_pdf_rects(Path(doc.file_path), finding_rows)
+            except Exception:  # noqa: BLE001
+                logging.exception("No se pudieron anclar subrayados al PDF")
         session.add_all(finding_rows)
         doc.score = score
         doc.classification = output["clasificacion"]
@@ -396,6 +431,11 @@ async def _run_pipeline(document_id: str, skip_ingest: bool) -> None:
             friendly = public_error_message(exc)
             _log(document_id, "ingest", friendly)
             _set_status(document_id, "error", error=friendly)
+
+
+async def run_analysis(document_id: str, skip_ingest: bool = False) -> None:
+    """Ejecuta el pipeline. Usar como BackgroundTask para que Vercel no corte la invocación."""
+    await _run_pipeline(document_id, skip_ingest)
 
 
 def enqueue_analysis(document_id: str, skip_ingest: bool = False) -> None:

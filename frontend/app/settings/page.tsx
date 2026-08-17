@@ -292,7 +292,8 @@ export default function SettingsPage() {
   const provider = PROVIDERS.find((p) => p.value === settings.provider);
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-8">
+    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="mx-auto w-full max-w-3xl px-5 py-8">
       <div className="rise-in mb-8">
         <h1 className="font-display text-4xl font-semibold tracking-tight text-ink">
           Configuración
@@ -514,9 +515,10 @@ export default function SettingsPage() {
             OCR — documentos escaneados e imágenes
           </h2>
           <p className="mb-4 mt-1 text-xs text-ink-faint">
-            Por defecto un modelo de visión <strong>barato</strong>. Con OpenRouter:
-            Gemini 2.5 Flash-Lite. Con Gemini API: Flash nativo. Si la API key
-            queda vacía se reutiliza la de los agentes.
+            Los escaneos e imágenes se leen con <strong>RapidOCR local</strong> (CPU, sin
+            API). El modelo de visión de abajo es un respaldo si RapidOCR no saca
+            texto, y para «Probar conexión». Si la API key queda vacía se reutiliza
+            la de los agentes.
           </p>
 
           <label className="mb-4 block">
@@ -687,6 +689,7 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

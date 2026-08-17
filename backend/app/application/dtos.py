@@ -7,7 +7,17 @@ nunca se exponen directamente.
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+import json
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+
+class HighlightRectDTO(BaseModel):
+    page: int
+    x: float
+    y: float
+    w: float
+    h: float
 
 
 class FindingDTO(BaseModel):
@@ -23,6 +33,24 @@ class FindingDTO(BaseModel):
     anchored: bool
     start_offset: int | None
     end_offset: int | None
+    rects_json: str | None = Field(default="[]", exclude=True)
+
+    @computed_field
+    @property
+    def rects(self) -> list[HighlightRectDTO]:
+        try:
+            raw = json.loads(self.rects_json or "[]")
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(raw, list):
+            return []
+        out: list[HighlightRectDTO] = []
+        for item in raw:
+            try:
+                out.append(HighlightRectDTO.model_validate(item))
+            except Exception:  # noqa: BLE001
+                continue
+        return out
 
 
 class AgentOutputDTO(BaseModel):

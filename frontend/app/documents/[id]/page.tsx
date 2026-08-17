@@ -10,6 +10,8 @@ import {
   PanelRightClose,
   CloudUpload,
   Check,
+  FileType,
+  PencilLine,
 } from "lucide-react";
 import {
   decideDocument,
@@ -26,6 +28,10 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { AgentProcessFeed } from "@/components/AgentProcessFeed";
 import { HighlightLegend } from "@/components/HighlightLegend";
 import { DocumentEditor, type EditorHandle } from "@/components/Editor";
+import {
+  OriginalViewer,
+  type OriginalViewerHandle,
+} from "@/components/OriginalViewer";
 import type { DocumentDetail, Finding, ProcessLog, Suggestion } from "@/lib/types";
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
@@ -46,8 +52,10 @@ export default function WorkspacePage({
   const [reanalyzing, setReanalyzing] = useState(false);
   const [agentsDone, setAgentsDone] = useState<string[]>([]);
   const [editorKey, setEditorKey] = useState(0);
+  const [view, setView] = useState<"original" | "editor">("original");
 
   const editorRef = useRef<EditorHandle>(null);
+  const originalRef = useRef<OriginalViewerHandle>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestHtml = useRef<string>("");
 
@@ -57,6 +65,7 @@ export default function WorkspacePage({
         .then((d) => {
           setDoc(d);
           if (remountEditor) setEditorKey((k) => k + 1);
+          if (d.file_format === "docx") setView("editor");
         })
         .catch((err) =>
           setLoadError(err instanceof Error ? err.message : "Error al cargar"),
@@ -66,6 +75,13 @@ export default function WorkspacePage({
   );
 
   useEffect(() => refetch(true), [refetch]);
+
+  useEffect(() => {
+    if (!doc) return;
+    if (!["queued", "extracting", "analyzing"].includes(doc.status)) return;
+    const timer = setInterval(() => refetch(false), 2500);
+    return () => clearInterval(timer);
+  }, [doc?.status, refetch]);
 
   useDocumentEvents(
     useCallback(
@@ -137,10 +153,18 @@ export default function WorkspacePage({
 
   /* ---------- Acciones ---------- */
   function handleFindingClick(finding: Finding) {
-    editorRef.current?.scrollToFinding(finding);
+    const hasOriginal = doc?.file_format === "pdf" || doc?.file_format === "image";
+    if (hasOriginal && view === "original") {
+      if (originalRef.current?.scrollToFinding(finding)) return;
+      setView("editor");
+    }
+    requestAnimationFrame(() => {
+      editorRef.current?.scrollToFinding(finding);
+    });
   }
 
   function handleApplySuggestion(s: Suggestion): boolean {
+    setView("editor");
     return editorRef.current?.applySuggestion(s.original, s.suggested) ?? false;
   }
 
@@ -171,28 +195,32 @@ export default function WorkspacePage({
   /* ---------- Render ---------- */
   if (loadError) {
     return (
-      <div className="mx-auto max-w-lg px-5 py-20 text-center">
+      <div className="mx-auto flex min-h-0 flex-1 max-w-lg items-center justify-center px-5 text-center">
+        <div>
         <p className="text-danger">{loadError}</p>
         <Link href="/" className="mt-4 inline-block text-sm font-semibold text-accent underline">
           Volver a la biblioteca
         </Link>
+        </div>
       </div>
     );
   }
   if (!doc) {
     return (
-      <div className="flex flex-1 items-center justify-center py-20 text-ink-faint">
+      <div className="flex min-h-0 flex-1 items-center justify-center text-ink-faint">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Cargando documento…
       </div>
     );
   }
 
   const busy = ["queued", "extracting", "analyzing"].includes(doc.status);
+  const hasOriginal = doc.file_format === "pdf" || doc.file_format === "image";
+  const showOriginal = hasOriginal && view === "original";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Barra del documento */}
-      <div className="flex items-center gap-3 border-b border-line bg-paper-raised/70 px-4 py-2">
+      <div className="flex shrink-0 items-center gap-3 border-b border-line bg-paper-raised/70 px-4 py-2">
         <Link
           href="/"
           className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink"
@@ -218,6 +246,35 @@ export default function WorkspacePage({
             <span className="text-danger">Error al guardar</span>
           ) : null}
         </span>
+
+        {hasOriginal && (
+          <div className="flex shrink-0 rounded-md border border-line-strong p-0.5">
+            <button
+              onClick={() => setView("original")}
+              className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold transition-colors ${
+                view === "original"
+                  ? "bg-accent text-white"
+                  : "text-ink-soft hover:text-ink"
+              }`}
+              title="Ver el archivo subido"
+            >
+              <FileType className="h-3.5 w-3.5" />
+              Paper
+            </button>
+            <button
+              onClick={() => setView("editor")}
+              className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold transition-colors ${
+                view === "editor"
+                  ? "bg-accent text-white"
+                  : "text-ink-soft hover:text-ink"
+              }`}
+              title="Editar el texto extraído"
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              Texto
+            </button>
+          </div>
+        )}
 
         <div className="relative">
           <button
@@ -261,9 +318,9 @@ export default function WorkspacePage({
       </div>
 
       {/* Tres zonas */}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Panel de análisis */}
-        <aside className="hidden w-[340px] shrink-0 border-r border-line bg-paper-raised/50 lg:block">
+        <aside className="hidden h-full min-h-0 w-[340px] shrink-0 overflow-hidden border-r border-line bg-paper-raised/50 lg:block">
           <AnalysisPanel
             doc={doc}
             onFindingClick={handleFindingClick}
@@ -273,11 +330,11 @@ export default function WorkspacePage({
           />
         </aside>
 
-        {/* Editor */}
-        <section className="flex min-w-0 flex-1 flex-col">
+        {/* Documento */}
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <AgentProcessFeed logs={doc.process_logs ?? []} busy={busy} />
           {busy && (
-            <div className="z-30 border-b border-[#d9c496] bg-[#efe4cf] px-4 py-2 text-xs font-medium text-warn">
+            <div className="z-30 shrink-0 border-b border-[#d9c496] bg-[#efe4cf] px-4 py-2 text-xs font-medium text-warn">
               <span className="pulse-soft mr-2 inline-block h-2 w-2 rounded-full bg-warn" />
               {doc.status === "extracting"
                 ? "Extrayendo la estructura del documento…"
@@ -292,43 +349,53 @@ export default function WorkspacePage({
             </div>
           )}
           {doc.status === "error" && (
-            <div className="sticky top-0 z-30 border-b border-[#dfa8a0] bg-[#f3d9d5] px-4 py-2 text-xs font-medium text-danger">
+            <div className="z-30 shrink-0 border-b border-[#dfa8a0] bg-[#f3d9d5] px-4 py-2 text-xs font-medium text-danger">
               {doc.error ?? "El servidor no pudo leer los datos."} Usa «Re-analizar»
               para intentarlo otra vez.
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-6 py-8">
-            {doc.content_html ? (
-              <div className="rise-in rounded-sm border border-line bg-paper-raised px-10 py-12 shadow-[0_1px_3px_rgba(34,29,21,0.08),0_8px_28px_rgba(34,29,21,0.06)]">
-                <HighlightLegend />
-                <DocumentEditor
-                  key={editorKey}
-                  ref={editorRef}
-                  initialContent={doc.content_html}
+            {hasOriginal && (
+              <div className={showOriginal ? "" : "hidden"}>
+                <OriginalViewer
+                  ref={originalRef}
+                  documentId={doc.id}
+                  fileFormat={doc.file_format}
                   findings={doc.findings}
-                  onChange={scheduleSave}
                 />
               </div>
-            ) : (
-              <div className="py-24 text-center text-sm text-ink-faint">
-                {busy ? (
-                  <>
-                    <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin" />
-                    El texto aparecerá aquí en cuanto termine la extracción…
-                  </>
-                ) : (
-                  "Este documento no tiene contenido."
-                )}
-              </div>
             )}
-          </div>
+            <div className={showOriginal ? "hidden" : "mx-auto max-w-3xl px-6 py-8"}>
+              {doc.content_html ? (
+                <div className="rise-in rounded-sm border border-line bg-paper-raised px-10 py-12 shadow-[0_1px_3px_rgba(34,29,21,0.08),0_8px_28px_rgba(34,29,21,0.06)]">
+                  <HighlightLegend />
+                  <DocumentEditor
+                    key={editorKey}
+                    ref={editorRef}
+                    initialContent={doc.content_html}
+                    findings={doc.findings}
+                    onChange={scheduleSave}
+                  />
+                </div>
+              ) : (
+                <div className="py-24 text-center text-sm text-ink-faint">
+                  {busy ? (
+                    <>
+                      <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin" />
+                      El texto aparecerá aquí en cuanto termine la extracción…
+                    </>
+                  ) : (
+                    "Este documento no tiene contenido."
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
         {/* Chat */}
         {chatOpen && (
-          <aside className="hidden w-[340px] shrink-0 border-l border-line bg-paper-raised/50 md:block">
+          <aside className="hidden h-full min-h-0 w-[340px] shrink-0 overflow-hidden border-l border-line bg-paper-raised/50 md:block">
             <ChatPanel
               documentId={doc.id}
               initialMessages={doc.chat_messages}

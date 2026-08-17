@@ -95,6 +95,24 @@ export function exportUrl(id: string, format: "md" | "html" | "docx") {
   return `${API_BASE}/api/documents/${id}/export?format=${format}`;
 }
 
+export function originalFileUrl(id: string) {
+  return `${API_BASE}/api/documents/${id}/file`;
+}
+
+export interface PageWordBox {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export function getPageBoxes(id: string, page: number) {
+  return request<{ page: number; words: PageWordBox[] }>(
+    `/api/documents/${id}/pages/${page}/boxes`,
+  );
+}
+
 export function getSettings() {
   return request<Settings>("/api/settings");
 }

@@ -28,7 +28,7 @@ export function AgentProcessFeed({
   if (!logs.length && !busy) return null;
 
   return (
-    <div className="flex max-h-56 min-h-0 flex-col overflow-hidden border-b border-line bg-paper-raised/90">
+    <div className="flex max-h-56 min-h-0 shrink-0 flex-col overflow-hidden border-b border-line bg-paper-raised/90">
       <p className="px-4 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
         Proceso de los agentes
         {busy && (

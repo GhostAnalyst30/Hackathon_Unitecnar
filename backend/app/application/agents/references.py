@@ -8,7 +8,7 @@ from .base import bibliography_slice, call_agent_json, normalize_finding
 
 SYSTEM = """Revisor de bibliografía. SOLO JSON compacto, sin markdown:
 {"analisis":"1-2 frases","referencias":[{"referencia":"texto de la ref","relevancia":"alta|media|baja","comentario":"breve"}],"hallazgos":[{"cita":"copia literal 8-25 palabras","tipo":"referencia|alerta","severidad":"baja|media|alta","explicacion":"problema"}]}
-Hasta 12 referencias. Hasta 8 hallazgos: citas en el cuerpo, refs dudosas, no citadas o mal formateadas. Citas EXACTAS del documento. Español."""
+Hasta 10 referencias (una línea cada una). Hasta 6 hallazgos. Si no caben todas, incluye menos y CIERRA el JSON. Citas EXACTAS. Español."""
 
 
 async def run_references(
@@ -20,7 +20,7 @@ async def run_references(
         SYSTEM,
         f"Documento (inicio + bibliografía):\n\n{bibliography_slice(text)}",
         settings.references_instructions,
-        max_tokens=1200,
+        max_tokens=2800,
     )
 
     findings = []

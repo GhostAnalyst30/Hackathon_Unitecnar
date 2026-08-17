@@ -14,6 +14,14 @@ export type FindingKind =
   | "inconsistencia"
   | "referencia";
 
+export interface HighlightRect {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Finding {
   id: string;
   agent: "reader" | "contradictions" | "references";
@@ -25,6 +33,7 @@ export interface Finding {
   anchored: boolean;
   start_offset: number | null;
   end_offset: number | null;
+  rects?: HighlightRect[];
 }
 
 export interface AgentOutput {

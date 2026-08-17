@@ -193,7 +193,7 @@ def make_client(base_url: str, api_key: str) -> AsyncOpenAI:
             max_retries=0,
             default_headers={
                 "HTTP-Referer": "http://localhost:3000",
-                "X-Title": "GhostAnalyst",
+                "X-Title": "Clumi",
             },
         )
         _clients[key] = client
@@ -488,26 +488,98 @@ async def ocr_image(
     )
 
 
+def _parse_json_object(text: str) -> dict | None:
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        pass
+    try:
+        data, _ = json.JSONDecoder().raw_decode(text)
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def _repair_truncated_object(text: str) -> str:
+    """Cierra strings/llaves/corchetes y recorta un value incompleto al final."""
+    s = text.strip()
+    if not s.startswith("{"):
+        return s
+    in_str = False
+    escape = False
+    for ch in s:
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+    if in_str:
+        if s.endswith("\\") and not s.endswith("\\\\"):
+            s = s[:-1]
+        s += '"'
+    s = s.rstrip()
+    while s:
+        s = s.rstrip()
+        if s.endswith(","):
+            s = s[:-1]
+            continue
+        if s.endswith(":"):
+            s = re.sub(r',?\s*"(?:\\.|[^"\\])*"\s*:\s*$', "", s)
+            continue
+        break
+
+    in_str = False
+    escape = False
+    stack: list[str] = []
+    for ch in s:
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch == "}" and stack and stack[-1] == "{":
+            stack.pop()
+        elif ch == "]" and stack and stack[-1] == "[":
+            stack.pop()
+    closers = {"{": "}", "[": "]"}
+    return s + "".join(closers[c] for c in reversed(stack))
+
+
 def extract_json(text: str) -> dict:
-    """Extrae el primer objeto JSON válido de la respuesta de un modelo."""
-    text = text.strip()
+    """Extrae el primer objeto JSON válido; si viene truncado, intenta cerrarlo."""
+    text = (text or "").strip()
     fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
     if fence:
         text = fence.group(1).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+    else:
+        half = re.search(r"```(?:json)?\s*(.*)", text, re.DOTALL)
+        if half:
+            text = half.group(1).strip()
+    parsed = _parse_json_object(text)
+    if parsed is not None:
+        return parsed
     start = text.find("{")
     if start == -1:
         raise ValueError("respuesta no estructurada")
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                candidate = text[start : i + 1]
-                return json.loads(candidate)
+    blob = text[start:]
+    parsed = _parse_json_object(blob)
+    if parsed is not None:
+        return parsed
+    parsed = _parse_json_object(_repair_truncated_object(blob))
+    if parsed is not None:
+        logger.warning("JSON truncado; se recuperó un objeto parcial")
+        return parsed
     raise ValueError("respuesta incompleta")

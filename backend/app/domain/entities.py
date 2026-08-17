@@ -73,6 +73,8 @@ class Finding(Base):
     anchored: Mapped[bool] = mapped_column(Boolean, default=False)
     start_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Rectángulos normalizados [{page,x,y,w,h}] sobre el PDF original
+    rects_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     document: Mapped[Document] = relationship(back_populates="findings")

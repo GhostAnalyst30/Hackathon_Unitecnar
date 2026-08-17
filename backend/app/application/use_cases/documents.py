@@ -5,6 +5,9 @@ mapean a DTOs en la capa api.
 """
 
 import io
+import json
+import logging
+import mimetypes
 import uuid
 from pathlib import Path
 
@@ -19,7 +22,7 @@ from ...domain.entities import Document
 from ...domain.services import anchor_findings
 from ...infrastructure.ingest import detect_format, html_to_text
 from ...infrastructure.llm import LLMNotConfigured, resolve_chat_config
-from .analysis import enqueue_analysis
+from ...infrastructure.pdf_rects import anchor_pdf_rects
 from .settings import get_settings
 
 
@@ -29,6 +32,22 @@ class DocumentNotFound(Exception):
 
 class InvalidOperation(Exception):
     pass
+
+
+logger = logging.getLogger(__name__)
+
+_IMAGE_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+_rects_tried: set[str] = set()
 
 
 def require_llm_configured(session: Session) -> None:
@@ -41,6 +60,51 @@ def get_document(session: Session, document_id: str) -> Document:
     if doc is None:
         raise DocumentNotFound("Documento no encontrado")
     return doc
+
+
+def ensure_pdf_rects(session: Session, doc: Document) -> None:
+    """Calcula subrayados sobre el PDF si aún no hay ninguno (docs antiguos)."""
+    if doc.file_format != "pdf" or not doc.findings:
+        return
+    if doc.id in _rects_tried:
+        return
+    _rects_tried.add(doc.id)
+    has_any = False
+    for finding in doc.findings:
+        try:
+            if json.loads(finding.rects_json or "[]"):
+                has_any = True
+                break
+        except json.JSONDecodeError:
+            continue
+    if has_any:
+        return
+    path = Path(doc.file_path)
+    if not path.is_file():
+        return
+    try:
+        anchor_pdf_rects(path, list(doc.findings))
+        session.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("No se pudieron anclar subrayados al PDF")
+
+
+def original_file(session: Session, document_id: str) -> tuple[Path, str, str]:
+    """Devuelve (ruta, media_type, filename) del archivo subido."""
+    doc = get_document(session, document_id)
+    path = Path(doc.file_path)
+    if not path.is_file():
+        raise DocumentNotFound("El archivo original ya no está disponible")
+    suffix = path.suffix.lower()
+    if doc.file_format == "pdf":
+        media = "application/pdf"
+    elif doc.file_format == "docx":
+        media = _DOCX_MIME
+    elif suffix in _IMAGE_MIME:
+        media = _IMAGE_MIME[suffix]
+    else:
+        media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return path, media, doc.filename
 
 
 def list_documents(session: Session) -> list[Document]:
@@ -70,8 +134,6 @@ def create_documents(
         created.append(doc)
 
     session.commit()
-    for doc in created:
-        enqueue_analysis(doc.id)
     return created
 
 
@@ -104,7 +166,6 @@ def reanalyze_document(session: Session, document_id: str) -> Document:
         raise InvalidOperation("El documento no tiene contenido para analizar")
     doc.status = "queued"
     session.commit()
-    enqueue_analysis(document_id, skip_ingest=True)
     return doc
 
 

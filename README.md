@@ -1,4 +1,4 @@
-# GhostAnalyst — Analizador personal de papers
+# Clumi — Analizador personal de papers
 
 Herramienta personal para revisar papers con un pipeline de agentes de IA:
 subes tu documento (**PDF, DOCX o imagen**), los agentes lo leen, buscan
@@ -71,7 +71,8 @@ Ve a **Configuración**:
 
 1. Elige **Google Gemini (API gratis)** y pega una key `AIza…` de
    [aistudio.google.com/apikey](https://aistudio.google.com/apikey). El preset
-   por defecto es Gemini 2.5 Flash (visión) para agentes y OCR.
+   por defecto es Gemini 2.5 Flash para los agentes. El OCR de escaneos es
+   **RapidOCR local** (sin API).
 2. O usa **OpenRouter** con Gemini 2.5 Flash-Lite / GPT-4o mini (baratos, de
    pago) y una key `sk-or-…` de [openrouter.ai/keys](https://openrouter.ai/keys).
    Hace falta un poco de crédito; los `:free` se acaban a las 50 peticiones/día.
@@ -112,7 +113,8 @@ backend/
     infrastructure/
       db.py            # SQLAlchemy + SQLite
       llm.py           # clientes OpenAI-compatibles (Gemini/OpenRouter/Qianfan/OpenAI)
-      ingest.py        # PDF / DOCX / imagen -> HTML editable (OCR si hace falta)
+      ingest.py        # PDF / DOCX / imagen -> HTML editable (RapidOCR si hace falta)
+      rapid_ocr.py     # RapidOCR local (escaneos y texto de figuras)
       crossref.py      # verificación de referencias en la Crossref REST API
       events.py        # broker SSE
     api/routes/        # routers delgados (documentos, settings, eventos)

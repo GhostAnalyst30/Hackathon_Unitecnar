@@ -126,7 +126,7 @@ async def verify_references(references: list[str]) -> list[dict]:
     if not references:
         return []
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_LOOKUPS)
-    headers = {"User-Agent": f"GhostAnalyst/1.0 (mailto:{CROSSREF_MAILTO})"}
+    headers = {"User-Agent": f"Clumi/1.0 (mailto:{CROSSREF_MAILTO})"}
     async with httpx.AsyncClient(timeout=LOOKUP_TIMEOUT, headers=headers) as client:
         return list(
             await asyncio.gather(

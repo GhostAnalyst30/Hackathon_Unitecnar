@@ -1,12 +1,28 @@
+import os
 from pathlib import Path
 
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path("/tmp/clumi") if IS_VERCEL else (BASE_DIR / "data")
 UPLOADS_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "app.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+
+OCR_BOXES_DIR = DATA_DIR / "ocr_boxes"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+OCR_BOXES_DIR.mkdir(parents=True, exist_ok=True)
+
+FRONTEND_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://hackathon-unitecnar.vercel.app",
+]
+_frontend_url = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+if _frontend_url:
+    FRONTEND_ORIGINS.append(_frontend_url)
 
 # Límite de documentos analizándose en paralelo
 MAX_CONCURRENT_ANALYSES = 4
@@ -41,4 +57,4 @@ DEFAULT_CHAT_FALLBACKS = "google/gemini-2.5-flash,openai/gpt-4o-mini"
 DEFAULT_OCR_FALLBACKS = "google/gemini-2.5-flash,openai/gpt-4o-mini"
 
 # Contacto para el "polite pool" de la Crossref REST API (sin API key)
-CROSSREF_MAILTO = "ghostanalyst@localhost.dev"
+CROSSREF_MAILTO = "clumi@localhost.dev"

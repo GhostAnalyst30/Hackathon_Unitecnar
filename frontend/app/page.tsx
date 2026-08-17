@@ -29,16 +29,23 @@ export default function LibraryPage() {
 
   const refresh = useCallback(() => {
     listDocuments()
-      .then(setDocs)
+      .then((items) => {
+        setDocs(items);
+        setBanner(null);
+      })
       .catch(() =>
         setBanner({
-          message: "No se pudo conectar con el backend (puerto 8000).",
+          message: "No se pudo conectar con el backend. Revisa NEXT_PUBLIC_API_URL o que el API esté en marcha.",
           needsConfig: false,
         }),
       );
   }, []);
 
   useEffect(refresh, [refresh]);
+  useEffect(() => {
+    const timer = setInterval(refresh, 2500);
+    return () => clearInterval(timer);
+  }, [refresh]);
   useDocumentEvents(
     useCallback((event) => {
       if (event.status === "agent_log") return;
@@ -53,7 +60,8 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl flex-1 px-5 py-8">
+    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="mx-auto w-full max-w-7xl px-5 py-8">
       <div className="rise-in mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-ink">
@@ -164,6 +172,7 @@ export default function LibraryPage() {
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

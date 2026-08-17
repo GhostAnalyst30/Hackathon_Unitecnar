@@ -1,4 +1,4 @@
-# GhostAnalyst — documentación de backend y API
+# Clumi — documentación de backend y API
 
 Contexto para agentes (Claude Code / Cursor) y para quien toque el código.
 La app es **personal, local, sin autenticación**. El humano siempre decide:
@@ -14,7 +14,7 @@ nada se valida ni se aplica al documento sin un clic explícito.
 ## 1. Qué hace el sistema
 
 1. El usuario sube PDF / DOCX / imagen.
-2. Se extrae HTML editable (estructura nativa; OCR solo en páginas escaneadas).
+2. Se extrae HTML editable (estructura nativa; RapidOCR solo en páginas escaneadas e imágenes).
 3. Tres agentes LLM corren **en paralelo**: lector, contradicciones, referencias (+ Crossref).
 4. Un clasificador **determinista** (sin LLM, salvo instrucciones custom) calcula puntaje 0–100 y etiqueta.
 5. El documento queda en `awaiting_review`. El editor resalta hallazgos; el chat propone edits; Validar / Descartar es humano.
@@ -120,10 +120,10 @@ START → ingest → (reader ∥ contradictions ∥ references) → classifier �
 
 | Formato | Cómo |
 |---|---|
-| PDF nativo | PyMuPDF `get_text("dict")` → HTML (`h1–h3`, `p`, `li`, marcadores de página). `find_tables()` está **apagado** (`EXTRACT_PDF_TABLES = False`) por lentitud. |
-| PDF escaneado | Si la página tiene &lt; 40 caracteres → pixmap + OCR visión. |
+| PDF nativo | PyMuPDF `get_text("dict")` → HTML (`h1–h3`, `p`, `li`, marcadores de página). Imágenes grandes: nota de figura + texto RapidOCR de ejes/leyenda si hay. `find_tables()` está **apagado** (`EXTRACT_PDF_TABLES = False`) por lentitud. |
+| PDF escaneado | Si la página tiene &lt; 40 caracteres → pixmap + **RapidOCR local**. Si RapidOCR no saca texto y hay visión configurada, se usa como respaldo. |
 | DOCX | mammoth → HTML |
-| Imagen | OCR visión |
+| Imagen | RapidOCR local (visión solo si RapidOCR queda vacío) |
 
 Los agentes no reciben el HTML: reciben `content_text` recortado (`truncate_doc`: cabeza 7k + centro 4k + cola 5k). Referencias usan `bibliography_slice` (intro + bloque de bibliografía).
 
@@ -137,7 +137,7 @@ Los agentes no reciben el HTML: reciben `content_text` recortado (`truncate_doc`
 | `classifier` | no (sí si hay `classifier_instructions`) | `clasificacion`, `justificacion`, `recomendaciones`, `puntaje` |
 | `chat` | sí | `respuesta` + `sugerencias[{original,sugerido,motivo}]` |
 
-`call_agent_json` exige JSON. Si un modelo falla (vacío, timeout, 429, JSON roto), el agente reintenta ese modelo varias veces y luego recorre `chat_model_chain` (principal + respaldos configurados) **dos pasadas** antes de marcar error. El feed de proceso muestra cada cambio de modelo. OCR igual con `ocr_model_chain`. Los tres agentes LLM no disparan más de 2 llamadas a la vez para no saturar el cupo `:free`.
+`call_agent_json` exige JSON. Si un modelo falla (vacío, timeout, 429, JSON roto), el agente reintenta ese modelo varias veces y luego recorre `chat_model_chain` (principal + respaldos configurados) **dos pasadas** antes de marcar error. El feed de proceso muestra cada cambio de modelo. La ingesta de escaneos usa RapidOCR; `ocr_model_chain` queda como respaldo de visión. Los tres agentes LLM no disparan más de 2 llamadas a la vez para no saturar el cupo `:free`.
 
 Crossref (`infrastructure/crossref.py`): API pública, `mailto` en User-Agent, hasta 8 lookups en paralelo, 1 row por búsqueda. Sin key.
 
@@ -329,6 +329,7 @@ backend/app/
   infrastructure/db.py             # engine + columnas nuevas
   infrastructure/llm.py            # OpenAI-compatible + fallbacks
   infrastructure/ingest.py         # PDF/DOCX/imagen → HTML
+  infrastructure/rapid_ocr.py      # RapidOCR local (escaneos + figuras)
   infrastructure/crossref.py
   infrastructure/events.py         # SSE in-memory
   api/routes/documents.py
@@ -339,4 +340,4 @@ frontend/lib/useDocumentEvents.ts  # EventSource
 frontend/components/Editor.tsx     # TipTap + highlights
 ```
 
-Stack backend (`requirements.txt`): FastAPI, Uvicorn, SQLAlchemy, Pydantic v2, LangGraph, OpenAI SDK, httpx, PyMuPDF, mammoth, BeautifulSoup, python-docx, markdownify.
+Stack backend (`requirements.txt`): FastAPI, Uvicorn, SQLAlchemy, Pydantic v2, LangGraph, OpenAI SDK, httpx, PyMuPDF, mammoth, BeautifulSoup, python-docx, markdownify, RapidOCR.
